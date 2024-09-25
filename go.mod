@@ -1,11 +1,8 @@
-module tag_usa/inventory_app
+module inventory_app
 
 go 1.23.1
 
-require (
-	fyne.io/fyne/v2 v2.5.1
-	github.com/lib/pq v1.10.9
-)
+require fyne.io/fyne/v2 v2.5.1
 
 require (
 	fyne.io/systray v1.11.0 // indirect
@@ -24,6 +21,7 @@ require (
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/jeandeaual/go-locale v0.0.0-20240223122105-ce5225dcaa49 // indirect
 	github.com/jsummers/gobmp v0.0.0-20151104160322-e2ba15ffa76e // indirect
+	github.com/lib/pq v1.10.9
 	github.com/nicksnyder/go-i18n/v2 v2.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rymdport/portal v0.2.6 // indirect

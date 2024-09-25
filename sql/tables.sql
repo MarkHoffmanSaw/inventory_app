@@ -1,7 +1,10 @@
+CREATE TYPE customer_type AS ENUM ('Internal', 'External');
+
 CREATE TABLE customers (
 	customer_id serial PRIMARY KEY,
-	name VARCHAR(55),
-	customer_code VARCHAR(55)
+	customer_name VARCHAR(55),
+	customer_code VARCHAR(55),
+	customer_type CUSTOMER_TYPE
 );
 
 CREATE TABLE warehouses (
@@ -22,7 +25,7 @@ CREATE TABLE materials (
 	stock_id VARCHAR(55),
 	location_id int REFERENCES locations(location_id),
 	customer_id int REFERENCES customers(customer_id),
-	type material_type,
+	material_type MATERIAL_TYPE,
 	description TEXT,
 	notes TEXT,
 	quantity int,
