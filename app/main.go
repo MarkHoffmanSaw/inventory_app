@@ -13,7 +13,7 @@ import (
 
 func main() {
 	myApp := app.New()
-	myWindow := myApp.NewWindow("Inventory Management")
+	myWindow := myApp.NewWindow("Tag Systems USA Inventory Management v1.0")
 
 	// Database connection
 	db, err := connectToDB()
@@ -24,15 +24,24 @@ func main() {
 		myWindow.ShowAndRun()
 	} else {
 		buttonsContainer := container.New(layout.NewVBoxLayout(),
+			widget.NewLabel("Customer settings"),
 			widget.NewButton("Add customer", func() { addCustomer(myWindow, db) }),
+			widget.NewLabel("Warehouse settings"),
 			widget.NewButton("Add warehouse", func() { addWarehouse(myWindow, db) }),
-			widget.NewButton("Add material", func() { addMaterial(myWindow, db) }),
-			widget.NewButton("Material handlng", func() {}),
+			widget.NewLabel("Material settings"),
+			widget.NewButton("Create material", func() { addMaterial(myWindow, db) }),
+			widget.NewButton("Add material", func() {}),
+			widget.NewButton("Move material", func() {}),
+			widget.NewButton("Remove material", func() {}),
 			widget.NewButton("Show inventory", func() { showInventory(myApp, db) }),
 		)
 
+		mainLabel := widget.NewLabel("Main Menu")
+		mainLabel.TextStyle.Bold = true
+		mainLabel.Alignment = fyne.TextAlignCenter
+
 		content := container.New(layout.NewVBoxLayout(),
-			widget.NewLabel("Inventory Management"),
+			mainLabel,
 			buttonsContainer,
 		)
 

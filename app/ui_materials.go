@@ -101,7 +101,7 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 	quantityInput := widget.NewEntry()
 	notesInput := widget.NewEntry()
 
-	dialog := dialog.NewForm("Add Material", "Save", "Cancel",
+	dialog := dialog.NewForm("Create Material", "Save", "Cancel",
 		[]*widget.FormItem{
 			widget.NewFormItem("Customer", customerSelector),
 			widget.NewFormItem("Location", locationSelector),
@@ -115,7 +115,7 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 				quantity, _ := strconv.Atoi(quantityInput.Text)
 
 				_, err := db.Exec(`INSERT INTO materials
-				(stock_id, location_id, customer_id, material_type,description, notes, quantity, updated_at)
+				(stock_id, location_id, customer_id, material_type, description, notes, quantity, updated_at)
 				VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 					stockIDInput.Text, locationsMap[locationSelector.Selected], customersMap[customerSelector.Selected],
 					typeSelector.Selected, descrInput.Text, notesInput.Text, quantity, time.Now())
@@ -132,5 +132,4 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 	dialog.Resize(fyne.NewSize(400, 400))
 
 	dialog.Show()
-
 }
