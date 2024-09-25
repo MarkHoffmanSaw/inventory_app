@@ -40,6 +40,5 @@ CREATE TABLE transactions_log (
 	quantity_change int,
 	notes text,
 	cost int,
-	updated_at timestamp,
-	FOREIGN KEY (material_id, stock_id) REFERENCES materials(material_id, stock_id)
+	updated_at timestamp
 );

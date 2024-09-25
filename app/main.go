@@ -7,12 +7,14 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	_ "github.com/lib/pq"
 )
 
 func main() {
 	myApp := app.New()
+	myApp.Settings().SetTheme(theme.LightTheme())
 	myWindow := myApp.NewWindow("Tag Systems USA Inventory Management v1.0")
 
 	// Database connection
@@ -23,17 +25,18 @@ func main() {
 		myWindow.Resize(fyne.NewSize(100, 100))
 		myWindow.ShowAndRun()
 	} else {
+
 		buttonsContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Customer settings"),
 			widget.NewButton("Add customer", func() { addCustomer(myWindow, db) }),
 			widget.NewLabel("Warehouse settings"),
 			widget.NewButton("Add warehouse", func() { addWarehouse(myWindow, db) }),
 			widget.NewLabel("Material settings"),
-			widget.NewButton("Create material", func() { addMaterial(myWindow, db) }),
-			widget.NewButton("Add material", func() {}),
-			widget.NewButton("Move material", func() {}),
-			widget.NewButton("Remove material", func() {}),
-			widget.NewButton("Show inventory", func() { showInventory(myApp, db) }),
+			widget.NewButton("Create material", func() { createMaterial(myWindow, db) }),
+			widget.NewButton("Add/Remove material to/from location", func() { addMaterial(myWindow, db) }), // changes quantities
+			widget.NewButton("Move material between locations", func() {}),
+			widget.NewButton("Remove material from location", func() {}),
+			widget.NewButton("Show inventory list", func() { showInventory(myApp, db) }),
 		)
 
 		mainLabel := widget.NewLabel("Main Menu")

@@ -12,7 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-type Materials struct {
+type Material struct {
 	MaterialID   int       `field:"material_id"`
 	StockID      string    `field:"stock_id"`
 	LocationName string    `field:"location_id"`
@@ -48,7 +48,7 @@ func getMaterialsTable(db *sql.DB) fyne.Widget {
 	}
 
 	for rows.Next() {
-		inv := Materials{}
+		inv := Material{}
 
 		s := reflect.ValueOf(&inv).Elem()
 		numCols := s.NumField()
