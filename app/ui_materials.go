@@ -25,14 +25,30 @@ type Customer struct {
 	code         string `field:"customer_code"`
 }
 
-// materialId, stockIDEntrySelect.Text, quantity, notes, time.Now()
+type MaterialInfo struct {
+	materialId   int       `field:"material_id"`
+	stockId      string    `field:"stock_id"`
+	locationId   int       `field:"location_id"`
+	customerId   int       `field:"customer_id"`
+	materialType string    `field:"material_type"`
+	description  string    `field:"description"`
+	notes        string    `field:"notes"`
+	quantity     int       `field:"quantity"`
+	updated_at   time.Time `field:"updated_at"`
+}
+
 type Transaction struct {
 	materialId int       `field:"material_id"`
 	stockId    string    `field:"stock_id"`
 	quantity   int       `field:"quantity_change"`
 	notes      string    `field:"notes"`
+	cost       int       `field:"cost"`
 	updateAt   time.Time `field:"updated_at"`
 }
+
+//////////////////////////////////////////
+// FETCH DATA FROM THE DB
+//////////////////////////////////////////
 
 func fetchCustomers(db *sql.DB) ([]Customer, error) {
 	rows, err := db.Query("SELECT * FROM customers;")
@@ -126,9 +142,9 @@ func fetchMaterialsByCustomer(db *sql.DB, customerId int) ([]Material, error) {
 
 func addTranscation(trx *Transaction, db *sql.DB) error {
 	_, err := db.Exec(
-		`INSERT INTO transactions_log (material_id, stock_id, quantity_change, notes, updated_at)
-		 VALUES ($1, $2, $3, $4, $5)
-		 `, trx.materialId, trx.stockId, trx.quantity, trx.notes, trx.updateAt,
+		`INSERT INTO transactions_log (material_id, stock_id, quantity_change, notes, cost, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 `, trx.materialId, trx.stockId, trx.quantity, trx.notes, trx.cost, trx.updateAt,
 	)
 
 	if err != nil {
@@ -138,9 +154,12 @@ func addTranscation(trx *Transaction, db *sql.DB) error {
 	}
 }
 
-// ////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////
 // ACTIONS
-// ///////////////////////////////////////////////////
+// Update the current materials quantity within locations
+//////////////////////////////////////////////////////////
+
+// Create a new material in a location
 func createMaterial(myWindow fyne.Window, db *sql.DB) {
 	customers, _ := fetchCustomers(db)
 	var customersStr []string
@@ -179,19 +198,32 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 			widget.NewFormItem("Notes", notesInput),
 		}, func(confirm bool) {
 			if confirm {
+				var material Material
 				quantity, _ := strconv.Atoi(quantityInput.Text)
 
-				_, err := db.Exec(`INSERT INTO materials
+				err := db.QueryRow(`INSERT INTO materials
 				(stock_id, location_id, customer_id, material_type, description, notes, quantity, updated_at)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, // INSERT INTO transactions
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING material_id;`,
 					stockIDInput.Text, locationsMap[locationSelector.Selected], customersMap[customerSelector.Selected],
-					typeSelector.Selected, descrInput.Text, notesInput.Text, quantity, time.Now())
+					typeSelector.Selected, descrInput.Text, notesInput.Text, quantity, time.Now()).Scan(&material.MaterialID)
 
 				if err != nil {
 					log.Println("Error saving material:", err)
 					dialog.ShowInformation("Error", "Unable to save data: "+err.Error(), myWindow)
 				} else {
-					dialog.ShowInformation("Success", "Material created", myWindow)
+					err := addTranscation(&Transaction{
+						materialId: material.MaterialID,
+						stockId:    stockIDInput.Text,
+						quantity:   quantity,
+						notes:      notesInput.Text,
+						updateAt:   time.Now(),
+					}, db)
+
+					if err != nil {
+						dialog.ShowInformation("Error", "Updating transactions error: "+err.Error(), myWindow)
+					} else {
+						dialog.ShowInformation("Success", "Material created", myWindow)
+					}
 				}
 			}
 		}, myWindow)
@@ -200,7 +232,7 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 	dialog.Show()
 }
 
-// Add an existing material to a location
+// Add a new material to a location
 func addMaterial(myWindow fyne.Window, db *sql.DB) {
 	customers, _ := fetchCustomers(db)
 	var customersStr []string
@@ -212,14 +244,14 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 
 	var materials []Material
 	var materialsStr []string
-	materialsMap := make(map[string]int)
+	materialsMap := make(map[[2]string]int)
 
 	customerSelector := widget.NewSelect(customersStr, func(customerName string) {
 		customerId := customersMap[customerName]
 		materials, _ = fetchMaterialsByCustomer(db, customerId)
 		for _, material := range materials {
 			materialsStr = append(materialsStr, material.StockID+"|"+material.LocationName)
-			materialsMap[material.StockID] = material.MaterialID
+			materialsMap[[2]string{material.StockID, material.LocationName}] = material.MaterialID
 		}
 	})
 
@@ -230,15 +262,18 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 				quantityInput := widget.NewEntry()
 				notesInput := widget.NewEntry()
 
-				dialogMaterial := dialog.NewForm("Add Material for "+customerSelector.Selected, "Save", "Cancel",
+				dialogMaterial := dialog.NewForm("Add Material", "Add", "Cancel",
 					[]*widget.FormItem{
 						widget.NewFormItem("Stock ID", stockIDEntrySelect),
-						widget.NewFormItem("Quantity", quantityInput),
+						widget.NewFormItem("Add quantity", quantityInput),
 						widget.NewFormItem("Notes", notesInput),
-					}, func(confirm bool) {
+					},
+					func(confirm bool) {
 						if confirm {
+							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
+							locationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
 							quantity, _ := strconv.Atoi(quantityInput.Text)
-							materialId := materialsMap[strings.Split(stockIDEntrySelect.Text, "|")[0]]
+							materialId := materialsMap[[2]string{stockId, locationName}]
 							notes := notesInput.Text
 
 							_, err := db.Exec(`
@@ -254,7 +289,7 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 							} else {
 								err := addTranscation(&Transaction{
 									materialId: materialId,
-									stockId:    stockIDEntrySelect.Text,
+									stockId:    stockId,
 									quantity:   quantity,
 									notes:      notes,
 									updateAt:   time.Now(),
@@ -276,5 +311,246 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 
 	dialogCustomer.Resize(fyne.NewSize(100, 100))
 	dialogCustomer.Show()
+}
 
+// Remove a material from a location
+func removeMaterial(myWindow fyne.Window, db *sql.DB) {
+	customers, _ := fetchCustomers(db)
+	var customersStr []string
+	customersMap := make(map[string]int)
+	for _, customer := range customers {
+		customersStr = append(customersStr, customer.name)
+		customersMap[customer.name] = customer.id
+	}
+
+	var materials []Material
+	var materialsStr []string
+	materialsMap := make(map[[2]string]int)
+
+	customerSelector := widget.NewSelect(customersStr, func(customerName string) {
+		customerId := customersMap[customerName]
+		materials, _ = fetchMaterialsByCustomer(db, customerId)
+		for _, material := range materials {
+			materialsStr = append(materialsStr, material.StockID+"|"+material.LocationName)
+			materialsMap[[2]string{material.StockID, material.LocationName}] = material.MaterialID
+		}
+	})
+
+	dialogCustomer := dialog.NewCustomConfirm("Choose customer", "OK", "", customerSelector,
+		func(confirm bool) {
+			if confirm {
+				stockIDEntrySelect := widget.NewSelectEntry(materialsStr)
+				quantityInput := widget.NewEntry()
+				notesInput := widget.NewEntry()
+
+				dialogMaterial := dialog.NewForm("Remove material", "Remove", "Cancel",
+					[]*widget.FormItem{
+						widget.NewFormItem("Stock ID", stockIDEntrySelect),
+						widget.NewFormItem("Remove Quantity", quantityInput),
+						widget.NewFormItem("Notes", notesInput),
+					},
+					func(confirm bool) {
+						if confirm {
+							quantity, _ := strconv.Atoi(quantityInput.Text)
+							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
+							locationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
+							materialId := materialsMap[[2]string{stockId, locationName}]
+							notes := notesInput.Text
+
+							_, err := db.Exec(`
+							UPDATE materials
+							SET quantity = (quantity - $1),
+								notes = $2
+							WHERE material_id = $3;
+							`, quantity, notes, materialId,
+							)
+
+							if err != nil {
+								dialog.ShowInformation("Error", "Updating material error: "+err.Error(), myWindow)
+							} else {
+								err := addTranscation(&Transaction{
+									materialId: materialId,
+									stockId:    stockId,
+									quantity:   -quantity,
+									notes:      notes,
+									updateAt:   time.Now(),
+								}, db)
+
+								if err != nil {
+									dialog.ShowInformation("Error", "Updating transactions error: "+err.Error(), myWindow)
+								} else {
+									dialog.ShowInformation("Success", "Material updated", myWindow)
+								}
+							}
+						}
+					}, myWindow)
+
+				dialogMaterial.Resize(fyne.NewSize(400, 400))
+				dialogMaterial.Show()
+			}
+		}, myWindow)
+
+	dialogCustomer.Resize(fyne.NewSize(100, 100))
+	dialogCustomer.Show()
+}
+
+// Move a material between locations
+func moveMaterial(myWindow fyne.Window, db *sql.DB) {
+	customers, _ := fetchCustomers(db)
+	var customersStr []string
+	customersMap := make(map[string]int)
+	for _, customer := range customers {
+		customersStr = append(customersStr, customer.name)
+		customersMap[customer.name] = customer.id
+	}
+
+	locations, _ := fetchLocations(db)
+	var locationsStr []string
+	locationsMap := make(map[string]int)
+	for _, location := range locations {
+		locationsStr = append(locationsStr, location.name)
+		locationsMap[location.name] = location.id
+	}
+
+	var materials []Material
+	var materialsStr []string
+	materialsMap := make(map[[2]string]int)
+
+	customerSelector := widget.NewSelect(customersStr, func(customerName string) {
+		customerId := customersMap[customerName]
+		materials, _ = fetchMaterialsByCustomer(db, customerId)
+		for _, material := range materials {
+			materialsStr = append(materialsStr, material.StockID+"|"+material.LocationName)
+			materialsMap[[2]string{material.StockID, material.LocationName}] = material.MaterialID
+		}
+	})
+
+	dialogCustomer := dialog.NewCustomConfirm("Choose customer", "OK", "Cancel", customerSelector,
+		func(confirm bool) {
+			if confirm && customerSelector.Selected != "" {
+				stockIDEntrySelect := widget.NewSelectEntry(materialsStr)
+				locationSelect := widget.NewSelect(locationsStr, func(s string) {})
+				quantityInput := widget.NewEntry()
+				costInput := widget.NewEntry()
+				notesInput := widget.NewEntry()
+
+				dialogMaterial := dialog.NewForm("Move material to another location", "Move", "Cancel",
+					[]*widget.FormItem{
+						widget.NewFormItem("Stock ID", stockIDEntrySelect),
+						widget.NewFormItem("New Location", locationSelect),
+						widget.NewFormItem("Move Quantity", quantityInput),
+						widget.NewFormItem("Cost (within warehouse)", costInput),
+						widget.NewFormItem("Notes", notesInput),
+					},
+					func(confirm bool) {
+						if confirm {
+							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
+							currLocationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
+							currMaterialId := materialsMap[[2]string{stockId, currLocationName}]
+							currentLocationId := locationsMap[currLocationName]
+
+							newLocationId := locationsMap[locationSelect.Selected]
+							quantity, _ := strconv.Atoi(quantityInput.Text)
+							notes := notesInput.Text
+							cost, _ := strconv.Atoi(costInput.Text)
+
+							var currMaterial MaterialInfo
+
+							// Update material in the current location
+							err := db.QueryRow(`
+								UPDATE materials
+								SET quantity = (quantity - $1),
+									notes = $2
+								WHERE material_id = $3 AND location_id = $4
+								RETURNING material_id, stock_id, location_id, customer_id, material_type,
+										description, notes, quantity, updated_at;
+							`, quantity, notes, currMaterialId, currentLocationId,
+							).Scan(&currMaterial.materialId,
+								&currMaterial.stockId,
+								&currMaterial.locationId,
+								&currMaterial.customerId,
+								&currMaterial.materialType,
+								&currMaterial.description,
+								&currMaterial.notes,
+								&currMaterial.quantity,
+								&currMaterial.updated_at)
+
+							if err != nil {
+								log.Println("upd1", err)
+								dialog.ShowInformation("Error", err.Error(), myWindow)
+							} else {
+								// Update material in the new location
+								var newMaterial MaterialInfo
+								rows, err := db.Query(`
+								UPDATE materials
+								SET quantity = (quantity + $1)
+								WHERE stock_id = $2 and location_id = $3
+								RETURNING material_id;
+							`, quantity, stockId, newLocationId,
+								)
+
+								if err != nil {
+									log.Println("upd2", err)
+									dialog.ShowInformation("Error", err.Error(), myWindow)
+								}
+								for rows.Next() {
+									err := rows.Scan(&newMaterial.materialId)
+									if err != nil {
+										log.Println("scan", err)
+									}
+								}
+
+								// If there is no the material in the destination location
+								// Then add the material in there
+								if newMaterial.materialId == 0 {
+									err := db.QueryRow(`
+									INSERT INTO materials
+										(stock_id, location_id,
+										customer_id, material_type, description, notes, quantity, updated_at)
+										VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+										RETURNING material_id;`,
+										stockId, newLocationId,
+										currMaterial.customerId, currMaterial.materialType, currMaterial.description,
+										currMaterial.notes, quantity, time.Now()).Scan(&newMaterial.materialId)
+
+									if err != nil {
+										log.Println("upd3", err)
+										dialog.ShowInformation("Error", err.Error(), myWindow)
+									}
+								}
+
+								addTranscation(&Transaction{
+									materialId: currMaterial.materialId,
+									stockId:    stockId,
+									quantity:   -quantity,
+									notes:      notes,
+									cost:       cost,
+									updateAt:   time.Now(),
+								}, db)
+
+								addTranscation(&Transaction{
+									materialId: newMaterial.materialId,
+									stockId:    stockId,
+									quantity:   quantity,
+									notes:      notes,
+									cost:       cost,
+									updateAt:   time.Now(),
+								}, db)
+
+								dialog.ShowInformation("Success", strconv.Itoa(quantity)+" of "+
+									stockId+" has been moved from "+strings.Split(stockIDEntrySelect.Text, "|")[1]+
+									" to "+locationSelect.Selected, myWindow)
+							}
+						}
+					}, myWindow)
+
+				dialogMaterial.Resize(fyne.NewSize(400, 400))
+				dialogMaterial.Show()
+			} else {
+				dialog.ShowInformation("Error", "You have to choose a customer", myWindow)
+			}
+		}, myWindow)
+
+	dialogCustomer.Resize(fyne.NewSize(100, 100))
+	dialogCustomer.Show()
 }

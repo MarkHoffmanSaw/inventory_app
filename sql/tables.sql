@@ -2,7 +2,7 @@ CREATE TYPE customer_type AS ENUM ('Internal', 'External');
 
 CREATE TABLE customers (
 	customer_id serial PRIMARY KEY,
-	customer_name VARCHAR(55),
+	name VARCHAR(55),
 	customer_code VARCHAR(55),
 	customer_type CUSTOMER_TYPE
 );
@@ -30,7 +30,7 @@ CREATE TABLE materials (
 	notes TEXT,
 	quantity int,
 	updated_at TIMESTAMP,
-	CONSTRAINT pk_material_id_stock_id PRIMARY KEY (material_id, stock_id)
+	CONSTRAINT pk_stock_id_location_id PRIMARY KEY (stock_id, location_id)
 );
 
 CREATE TABLE transactions_log (

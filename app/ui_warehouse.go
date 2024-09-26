@@ -20,23 +20,26 @@ func addWarehouse(myWindow fyne.Window, db *sql.DB) {
 		}, func(confirm bool) {
 			if confirm {
 				var warehouseId int
-				errWarehouse := db.QueryRow("INSERT INTO warehouses(name) VALUES ($1) RETURNING warehouse_id;",
+				err := db.QueryRow("INSERT INTO warehouses(name) VALUES ($1) RETURNING warehouse_id;",
 					nameInput.Text).Scan(&warehouseId)
 
-				if errWarehouse != nil {
-					dialog.ShowInformation("Error", "Can't add new warehouse: "+errWarehouse.Error(), myWindow)
-					log.Println("Error adding warehouse:", errWarehouse)
-				}
-
-				if errWarehouse == nil {
-					_, errLoc := db.Exec("INSERT INTO locations(name, warehouse_id) VALUES ($1,$2);",
+				if err != nil {
+					dialog.ShowInformation("Error", "Can't add new warehouse: "+err.Error(), myWindow)
+					log.Println("Error adding warehouse:", err)
+					dialog.ShowInformation("Error", err.Error(), myWindow)
+				} else {
+					_, err := db.Exec("INSERT INTO locations(name, warehouse_id) VALUES ($1,$2);",
 						locNameInput.Text, warehouseId)
 
-					if errLoc != nil {
-						dialog.ShowInformation("Error", "Can't add new location: "+errLoc.Error(), myWindow)
-						log.Println("Error adding location:", errLoc)
+					if err != nil {
+						dialog.ShowInformation("Error", "Can't add new location: "+err.Error(), myWindow)
+						log.Println("Error adding location:", err)
+						dialog.ShowInformation("Error", err.Error(), myWindow)
+					} else {
+						dialog.ShowInformation("Success", "Warehouse and location created", myWindow)
 					}
 				}
+
 			}
 		}, myWindow)
 

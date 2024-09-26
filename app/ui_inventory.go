@@ -37,7 +37,8 @@ func getMaterialsTable(db *sql.DB) fyne.Widget {
 							m.notes, m.quantity, m.updated_at, c.name, m.material_type
 							FROM materials m
 							LEFT JOIN locations l ON m.location_id = l.location_id
-							LEFT JOIN customers c ON c.customer_id = m.customer_id`)
+							LEFT JOIN customers c ON c.customer_id = m.customer_id
+							ORDER BY m.updated_at ASC;`)
 	if err != nil {
 		fmt.Printf("Error getMaterialsTable1: %e", err)
 	}

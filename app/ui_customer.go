@@ -21,9 +21,12 @@ func addCustomer(myWindow fyne.Window, db *sql.DB) {
 			widget.NewFormItem("User type", typeSelect),
 		}, func(confirm bool) {
 			if confirm {
-				if _, err := db.Exec("INSERT INTO customers (customer_name, customer_code, customer_type) VALUES ($1,$2,$3)",
+				if _, err := db.Exec("INSERT INTO customers (name, customer_code, customer_type) VALUES ($1,$2,$3)",
 					nameInput.Text, codeInput.Text, typeSelect.Selected); err != nil {
 					log.Println("Error adding customer:", err)
+					dialog.ShowInformation("Error", err.Error(), myWindow)
+				} else {
+					dialog.ShowInformation("Success", "Customer added", myWindow)
 				}
 			}
 		}, myWindow)
