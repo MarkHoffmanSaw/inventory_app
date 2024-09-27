@@ -21,7 +21,7 @@ func main() {
 	db, err := connectToDB()
 	if err != nil {
 		log.Println(err.Error())
-		myWindow.SetContent(widget.NewLabel("Database error: " + err.Error() + "/n Call to the IT department for help"))
+		myWindow.SetContent(widget.NewLabel("Database error: " + err.Error() + "\nCall to the IT department for help"))
 		myWindow.Resize(fyne.NewSize(100, 100))
 		myWindow.ShowAndRun()
 	} else {
@@ -29,11 +29,16 @@ func main() {
 		mainLabel.TextStyle.Bold = true
 		mainLabel.Alignment = fyne.TextAlignCenter
 
-		buttonsContainer := container.New(layout.NewVBoxLayout(),
+		customerContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Customer settings"),
-			widget.NewButton("Add customer", func() { addCustomer(myWindow, db) }),
+			widget.NewButton("Add customer", func() { addCustomer(myWindow, db) }))
+
+		warehouseContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Warehouse settings"),
 			widget.NewButton("Add warehouse", func() { addWarehouse(myWindow, db) }),
+		)
+
+		materialContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Material settings"),
 			widget.NewButton("Create a material", func() { createMaterial(myWindow, db) }),
 			widget.NewButton("Add material", func() { addMaterial(myWindow, db) }),
@@ -42,13 +47,19 @@ func main() {
 			widget.NewButton("Show inventory list", func() { showInventory(myApp, db) }),
 		)
 
+		buttonsContainer := container.New(layout.NewGridLayoutWithColumns(3),
+			customerContainer,
+			warehouseContainer,
+			materialContainer,
+		)
+
 		content := container.New(layout.NewVBoxLayout(),
 			mainLabel,
 			buttonsContainer,
 		)
 
 		myWindow.SetContent(content)
-		myWindow.Resize(fyne.NewSize(450, 500))
+		myWindow.Resize(fyne.NewSize(800, 500))
 		myWindow.ShowAndRun()
 	}
 }

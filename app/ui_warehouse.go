@@ -72,8 +72,8 @@ func addWarehouse(myWindow fyne.Window, db *sql.DB) {
 					id, ok := warehousesMap[nameSelectInput.Text]
 
 					if !ok {
-						err := db.QueryRow("INSERT INTO warehouses(name) VALUES($1)
-											RETURNING warehouse_id;",
+						err := db.QueryRow(`INSERT INTO warehouses(name) VALUES($1)
+											RETURNING warehouse_id;`,
 							nameSelectInput.Text).Scan(&warehouseId)
 						if err != nil {
 							log.Println("Error adding warehouse:", err)

@@ -31,7 +31,7 @@ func addCustomer(myWindow fyne.Window, db *sql.DB) {
 			}
 		}, myWindow)
 
-	dialog.Resize(fyne.NewSize(400, 300))
+	dialog.Resize(fyne.NewSize(600, 300))
 
 	dialog.Show()
 }
