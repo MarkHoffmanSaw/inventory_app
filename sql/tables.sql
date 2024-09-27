@@ -1,34 +1,37 @@
+CREATE DATABASE tag_db;
+
 CREATE TYPE customer_type AS ENUM ('Internal', 'External');
 
 CREATE TABLE customers (
 	customer_id serial PRIMARY KEY,
-	name VARCHAR(55),
+	name VARCHAR(55) NOT NULL,
 	customer_code VARCHAR(55),
-	customer_type CUSTOMER_TYPE
+	customer_type CUSTOMER_TYPE  NOT NULL
 );
 
 CREATE TABLE warehouses (
 	warehouse_id serial PRIMARY KEY,
-	name VARCHAR(55)
+	name VARCHAR(55) UNIQUE  NOT NULL
 );
 
 CREATE TABLE locations (
 	location_id serial PRIMARY KEY,
-	name VARCHAR(55),
-	warehouse_id int REFERENCES warehouses(warehouse_id)
+	name VARCHAR(55)  NOT NULL,
+	warehouse_id int REFERENCES warehouses(warehouse_id),
+	CONSTRAINT locations_name_warehouse_id UNIQUE(name, warehouse_id)
 );
 
 CREATE TYPE material_type AS ENUM ('Carrier','Card','Envelope','Insert', 'Consumables');
 
 CREATE TABLE materials (
 	material_id serial,
-	stock_id VARCHAR(55),
+	stock_id VARCHAR(55)  NOT NULL,
 	location_id int REFERENCES locations(location_id),
 	customer_id int REFERENCES customers(customer_id),
-	material_type MATERIAL_TYPE,
+	material_type MATERIAL_TYPE  NOT NULL,
 	description TEXT,
 	notes TEXT,
-	quantity int,
+	quantity int  NOT NULL,
 	updated_at TIMESTAMP,
 	CONSTRAINT pk_stock_id_location_id PRIMARY KEY (stock_id, location_id)
 );
