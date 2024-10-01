@@ -44,13 +44,19 @@ func main() {
 			widget.NewButton("Add material", func() { addMaterial(myWindow, db) }),
 			widget.NewButton("Remove material", func() { removeMaterial(myWindow, db) }),
 			widget.NewButton("Move material", func() { moveMaterial(myWindow, db) }),
-			widget.NewButton("Show inventory list", func() { showInventory(myApp, db) }),
 		)
 
-		buttonsContainer := container.New(layout.NewGridLayoutWithColumns(3),
+		infoContainer := container.New(layout.NewVBoxLayout(),
+			widget.NewLabel("Info Tables"),
+			widget.NewButton("Show inventory list", func() { showInventory(myApp, db) }),
+			widget.NewButton("Show transactions", func() { showTransactions(myApp, db) }),
+		)
+
+		buttonsContainer := container.New(layout.NewGridLayoutWithColumns(4),
 			customerContainer,
 			warehouseContainer,
 			materialContainer,
+			infoContainer,
 		)
 
 		content := container.New(layout.NewVBoxLayout(),

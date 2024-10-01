@@ -37,13 +37,20 @@ type MaterialInfo struct {
 	updated_at   time.Time `field:"updated_at"`
 }
 
-type Transaction struct {
-	materialId int       `field:"material_id"`
-	stockId    string    `field:"stock_id"`
-	quantity   int       `field:"quantity_change"`
-	notes      string    `field:"notes"`
-	cost       int       `field:"cost"`
-	updateAt   time.Time `field:"updated_at"`
+type TransactionInfo struct {
+	transactionId int       `field:"transaction_id"`
+	materialId    int       `field:"material_id"`
+	stockId       string    `field:"stock_id"`
+	quantity      int       `field:"quantity_change"`
+	notes         string    `field:"notes"`
+	cost          int       `field:"cost"`
+	updatedAt     time.Time `field:"updated_at"`
+	jobTicket     string    `field:"job_ticket"`
+
+	// optional attributes are only for info
+	locationName  string `field:"location_name"`
+	warehouseName string `field:"warehouse_name"`
+	customerName  string `field:"customer_name"`
 }
 
 //////////////////////////////////////////
@@ -140,11 +147,11 @@ func fetchMaterialsByCustomer(db *sql.DB, customerId int) ([]Material, error) {
 	return materials, nil
 }
 
-func addTranscation(trx *Transaction, db *sql.DB) error {
+func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 	_, err := db.Exec(
-		`INSERT INTO transactions_log (material_id, stock_id, quantity_change, notes, cost, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 `, trx.materialId, trx.stockId, trx.quantity, trx.notes, trx.cost, trx.updateAt,
+		`INSERT INTO transactions_log (material_id, stock_id, quantity_change, notes, cost, job_ticket, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 `, trx.materialId, trx.stockId, trx.quantity, trx.notes, trx.cost, trx.jobTicket, trx.updatedAt,
 	)
 
 	if err != nil {
@@ -211,12 +218,12 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 					log.Println("Error saving material:", err)
 					dialog.ShowInformation("Error", "Unable to save data: "+err.Error(), myWindow)
 				} else {
-					err := addTranscation(&Transaction{
+					err := addTranscation(&TransactionInfo{
 						materialId: material.MaterialID,
 						stockId:    stockIDInput.Text,
 						quantity:   quantity,
 						notes:      notesInput.Text,
-						updateAt:   time.Now(),
+						updatedAt:  time.Now(),
 					}, db)
 
 					if err != nil {
@@ -228,7 +235,7 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 			}
 		}, myWindow)
 
-	dialog.Resize(fyne.NewSize(400, 400))
+	dialog.Resize(fyne.NewSize(600, 400))
 	dialog.Show()
 }
 
@@ -257,7 +264,7 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 
 	dialogCustomer := dialog.NewCustomConfirm("Choose customer", "OK", "", customerSelector,
 		func(confirm bool) {
-			if confirm {
+			if confirm && customerSelector.Selected != "" {
 				stockIDEntrySelect := widget.NewSelectEntry(materialsStr)
 				quantityInput := widget.NewEntry()
 				notesInput := widget.NewEntry()
@@ -287,12 +294,12 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 							if err != nil {
 								dialog.ShowInformation("Error", "Updating material error: "+err.Error(), myWindow)
 							} else {
-								err := addTranscation(&Transaction{
+								err := addTranscation(&TransactionInfo{
 									materialId: materialId,
 									stockId:    stockId,
 									quantity:   quantity,
 									notes:      notes,
-									updateAt:   time.Now(),
+									updatedAt:  time.Now(),
 								}, db)
 
 								if err != nil {
@@ -304,12 +311,12 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 						}
 					}, myWindow)
 
-				dialogMaterial.Resize(fyne.NewSize(400, 400))
+				dialogMaterial.Resize(fyne.NewSize(600, 300))
 				dialogMaterial.Show()
 			}
 		}, myWindow)
 
-	dialogCustomer.Resize(fyne.NewSize(100, 100))
+	dialogCustomer.Resize(fyne.NewSize(300, 100))
 	dialogCustomer.Show()
 }
 
@@ -338,16 +345,18 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 
 	dialogCustomer := dialog.NewCustomConfirm("Choose customer", "OK", "", customerSelector,
 		func(confirm bool) {
-			if confirm {
+			if confirm && customerSelector.Selected != "" {
 				stockIDEntrySelect := widget.NewSelectEntry(materialsStr)
 				quantityInput := widget.NewEntry()
 				notesInput := widget.NewEntry()
+				jobTicketInput := widget.NewEntry()
 
 				dialogMaterial := dialog.NewForm("Remove material", "Remove", "Cancel",
 					[]*widget.FormItem{
 						widget.NewFormItem("Stock ID", stockIDEntrySelect),
 						widget.NewFormItem("Remove Quantity", quantityInput),
 						widget.NewFormItem("Notes", notesInput),
+						widget.NewFormItem("Job Ticket #", jobTicketInput),
 					},
 					func(confirm bool) {
 						if confirm {
@@ -355,6 +364,7 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
 							locationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
 							materialId := materialsMap[[2]string{stockId, locationName}]
+							jobTicket := jobTicketInput.Text
 							notes := notesInput.Text
 
 							_, err := db.Exec(`
@@ -368,12 +378,13 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 							if err != nil {
 								dialog.ShowInformation("Error", "Updating material error: "+err.Error(), myWindow)
 							} else {
-								err := addTranscation(&Transaction{
+								err := addTranscation(&TransactionInfo{
 									materialId: materialId,
 									stockId:    stockId,
 									quantity:   -quantity,
 									notes:      notes,
-									updateAt:   time.Now(),
+									jobTicket:  jobTicket,
+									updatedAt:  time.Now(),
 								}, db)
 
 								if err != nil {
@@ -385,12 +396,12 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 						}
 					}, myWindow)
 
-				dialogMaterial.Resize(fyne.NewSize(400, 400))
+				dialogMaterial.Resize(fyne.NewSize(600, 300))
 				dialogMaterial.Show()
 			}
 		}, myWindow)
 
-	dialogCustomer.Resize(fyne.NewSize(100, 100))
+	dialogCustomer.Resize(fyne.NewSize(300, 100))
 	dialogCustomer.Show()
 }
 
@@ -427,6 +438,7 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 
 	dialogCustomer := dialog.NewCustomConfirm("Choose customer", "OK", "Cancel", customerSelector,
 		func(confirm bool) {
+			log.Println(confirm, len(customerSelector.Selected))
 			if confirm && customerSelector.Selected != "" {
 				stockIDEntrySelect := widget.NewSelectEntry(materialsStr)
 				locationSelect := widget.NewSelect(locationsStr, func(s string) {})
@@ -519,22 +531,22 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 									}
 								}
 
-								addTranscation(&Transaction{
+								addTranscation(&TransactionInfo{
 									materialId: currMaterial.materialId,
 									stockId:    stockId,
 									quantity:   -quantity,
 									notes:      notes,
 									cost:       cost,
-									updateAt:   time.Now(),
+									updatedAt:  time.Now(),
 								}, db)
 
-								addTranscation(&Transaction{
+								addTranscation(&TransactionInfo{
 									materialId: newMaterial.materialId,
 									stockId:    stockId,
 									quantity:   quantity,
 									notes:      notes,
 									cost:       cost,
-									updateAt:   time.Now(),
+									updatedAt:  time.Now(),
 								}, db)
 
 								dialog.ShowInformation("Success", strconv.Itoa(quantity)+" of "+
@@ -544,13 +556,11 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 						}
 					}, myWindow)
 
-				dialogMaterial.Resize(fyne.NewSize(400, 400))
+				dialogMaterial.Resize(fyne.NewSize(600, 400))
 				dialogMaterial.Show()
-			} else {
-				dialog.ShowInformation("Error", "You have to choose a customer", myWindow)
 			}
 		}, myWindow)
 
-	dialogCustomer.Resize(fyne.NewSize(100, 100))
+	dialogCustomer.Resize(fyne.NewSize(300, 100))
 	dialogCustomer.Show()
 }

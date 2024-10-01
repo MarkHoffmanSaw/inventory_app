@@ -4,19 +4,19 @@ CREATE TYPE customer_type AS ENUM ('Internal', 'External');
 
 CREATE TABLE customers (
 	customer_id serial PRIMARY KEY,
-	name VARCHAR(55) NOT NULL,
-	customer_code VARCHAR(55),
+	name VARCHAR(100) NOT NULL,
+	customer_code VARCHAR(100),
 	customer_type CUSTOMER_TYPE  NOT NULL
 );
 
 CREATE TABLE warehouses (
 	warehouse_id serial PRIMARY KEY,
-	name VARCHAR(55) UNIQUE  NOT NULL
+	name VARCHAR(100) UNIQUE  NOT NULL
 );
 
 CREATE TABLE locations (
 	location_id serial PRIMARY KEY,
-	name VARCHAR(55)  NOT NULL,
+	name VARCHAR(100)  NOT NULL,
 	warehouse_id int REFERENCES warehouses(warehouse_id),
 	CONSTRAINT locations_name_warehouse_id UNIQUE(name, warehouse_id)
 );
@@ -25,7 +25,7 @@ CREATE TYPE material_type AS ENUM ('Carrier','Card','Envelope','Insert', 'Consum
 
 CREATE TABLE materials (
 	material_id serial,
-	stock_id VARCHAR(55)  NOT NULL,
+	stock_id VARCHAR(100)  NOT NULL,
 	location_id int REFERENCES locations(location_id),
 	customer_id int REFERENCES customers(customer_id),
 	material_type MATERIAL_TYPE  NOT NULL,
@@ -39,9 +39,10 @@ CREATE TABLE materials (
 CREATE TABLE transactions_log (
 	transaction_id serial PRIMARY KEY,
 	material_id int,
-	stock_id VARCHAR(55),
+	stock_id VARCHAR(100),
 	quantity_change int,
 	notes text,
 	cost int,
+	job_ticket VARCHAR(100),
 	updated_at timestamp
 );

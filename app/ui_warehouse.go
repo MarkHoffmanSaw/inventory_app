@@ -98,6 +98,6 @@ func addWarehouse(myWindow fyne.Window, db *sql.DB) {
 			}
 		}, myWindow)
 
-	dialog.Resize(fyne.NewSize(300, 200))
+	dialog.Resize(fyne.NewSize(600, 300))
 	dialog.Show()
 }
