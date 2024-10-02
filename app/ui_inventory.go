@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -33,19 +34,64 @@ type Transaction struct {
 	Cost          int       `field:"cost"`
 	UpdatedAt     time.Time `field:"updated_at"`
 	JobTicket     string    `field:"job_ticket"`
-
-	// optional attributes are only for info
-	LocationName  string `field:"location_name"`
-	WarehouseName string `field:"warehouse_name"`
-	CustomerName  string `field:"customer_name"`
+	LocationName  string    `field:"location_name"`
+	WarehouseName string    `field:"warehouse_name"`
+	CustomerName  string    `field:"customer_name"`
 }
 
-func showInventory(app fyne.App, db *sql.DB) {
+type InventoryFilter struct {
+	stockID    string
+	customerID int
+	locationID int
+}
+
+func showInventory(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 	window := app.NewWindow("Inventory")
-	materialsTable := getMaterialsTable(db)
-	window.SetContent(materialsTable)
-	window.Resize(fyne.NewSize(1600, 700))
-	window.Show()
+
+	customers, _ := fetchCustomers(db)
+	var customersStr []string
+	customersMap := make(map[string]int)
+	for _, customer := range customers {
+		customersStr = append(customersStr, customer.name)
+		customersMap[customer.name] = customer.id
+	}
+
+	locations, _ := fetchLocations(db)
+	var locationsStr []string
+	locationsMap := make(map[string]int)
+	for _, location := range locations {
+		locationsStr = append(locationsStr, location.name)
+		locationsMap[location.name] = location.id
+	}
+
+	stockIDInput := widget.NewEntry()
+	customerSelector := widget.NewSelect(customersStr, func(s string) {})
+	locationSelector := widget.NewSelect(locationsStr, func(s string) {})
+
+	// Filter Inventory List by options
+	dialog := dialog.NewForm("Filter Options", "Filter", "",
+		[]*widget.FormItem{
+			widget.NewFormItem("Stock ID", stockIDInput),
+			widget.NewFormItem("Customer", customerSelector),
+			widget.NewFormItem("Location", locationSelector),
+		}, func(confirm bool) {
+			if confirm {
+				invFilter := &InventoryFilter{
+					stockID:    stockIDInput.Text,
+					customerID: customersMap[customerSelector.Selected],
+					locationID: locationsMap[locationSelector.Selected],
+				}
+
+				materialsTable := getMaterialsTable(db, invFilter)
+				window.SetContent(materialsTable)
+				window.Resize(fyne.NewSize(1600, 700))
+				window.Show()
+			}
+		}, myWindow)
+
+	dialog.Resize(fyne.NewSize(600, 200))
+	dialog.Show()
+
 }
 
 func showTransactions(app fyne.App, db *sql.DB) {
@@ -56,13 +102,18 @@ func showTransactions(app fyne.App, db *sql.DB) {
 	window.Show()
 }
 
-func getMaterialsTable(db *sql.DB) fyne.Widget {
+func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 	rows, err := db.Query(`SELECT m.material_id, m.stock_id, l.name, m.description,
 							m.notes, m.quantity, m.updated_at, c.name, m.material_type
 							FROM materials m
 							LEFT JOIN locations l ON m.location_id = l.location_id
 							LEFT JOIN customers c ON c.customer_id = m.customer_id
-							ORDER BY m.updated_at ASC;`)
+							WHERE 
+								($1 = '' OR m.stock_id = $1) AND
+								($2 = 0 OR c.customer_id = $2) AND
+								($3 = 0 OR l.location_id = $3)
+							ORDER BY m.updated_at ASC;`,
+		filterOpts.stockID, filterOpts.customerID, filterOpts.locationID)
 	if err != nil {
 		fmt.Printf("Error getMaterialsTable1: %e", err)
 	}

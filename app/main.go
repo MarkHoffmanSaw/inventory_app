@@ -48,7 +48,7 @@ func main() {
 
 		infoContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Info Tables"),
-			widget.NewButton("Show inventory list", func() { showInventory(myApp, db) }),
+			widget.NewButton("Show inventory list", func() { showInventory(myApp, db, myWindow) }),
 			widget.NewButton("Show transactions", func() { showTransactions(myApp, db) }),
 		)
 
@@ -65,7 +65,7 @@ func main() {
 		)
 
 		myWindow.SetContent(content)
-		myWindow.Resize(fyne.NewSize(800, 500))
+		myWindow.Resize(fyne.NewSize(800, 300))
 		myWindow.ShowAndRun()
 	}
 }
