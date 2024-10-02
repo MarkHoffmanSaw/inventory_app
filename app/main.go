@@ -40,8 +40,8 @@ func main() {
 
 		materialContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Material settings"),
-			widget.NewButton("Create a material", func() { createMaterial(myWindow, db) }),
-			widget.NewButton("Add material", func() { addMaterial(myWindow, db) }),
+			widget.NewButton("Create material", func() { createMaterial(myWindow, db) }),
+			widget.NewButton("Replenish material", func() { addMaterial(myWindow, db) }),
 			widget.NewButton("Remove material", func() { removeMaterial(myWindow, db) }),
 			widget.NewButton("Move material", func() { moveMaterial(myWindow, db) }),
 		)

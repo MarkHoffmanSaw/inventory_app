@@ -38,19 +38,13 @@ type MaterialInfo struct {
 }
 
 type TransactionInfo struct {
-	transactionId int       `field:"transaction_id"`
-	materialId    int       `field:"material_id"`
-	stockId       string    `field:"stock_id"`
-	quantity      int       `field:"quantity_change"`
-	notes         string    `field:"notes"`
-	cost          int       `field:"cost"`
-	updatedAt     time.Time `field:"updated_at"`
-	jobTicket     string    `field:"job_ticket"`
-
-	// optional attributes are only for info
-	locationName  string `field:"location_name"`
-	warehouseName string `field:"warehouse_name"`
-	customerName  string `field:"customer_name"`
+	materialId int       `field:"material_id"`
+	stockId    string    `field:"stock_id"`
+	quantity   int       `field:"quantity_change"`
+	notes      string    `field:"notes"`
+	cost       int       `field:"cost"`
+	updatedAt  time.Time `field:"updated_at"`
+	jobTicket  string    `field:"job_ticket"`
 }
 
 //////////////////////////////////////////
@@ -269,7 +263,7 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 				quantityInput := widget.NewEntry()
 				notesInput := widget.NewEntry()
 
-				dialogMaterial := dialog.NewForm("Add Material", "Add", "Cancel",
+				dialogMaterial := dialog.NewForm("Replenish Material", "Add", "Cancel",
 					[]*widget.FormItem{
 						widget.NewFormItem("Stock ID", stockIDEntrySelect),
 						widget.NewFormItem("Add quantity", quantityInput),
