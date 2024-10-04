@@ -14,15 +14,18 @@ import (
 )
 
 type Material struct {
-	MaterialID   int       `field:"material_id"`
-	StockID      string    `field:"stock_id"`
-	LocationName string    `field:"location_id"`
-	Description  string    `field:"description"`
-	Notes        string    `field:"notes"`
-	Quantity     int       `field:"quantity"`
-	UpdatedAt    time.Time `field:"updated_at"`
-	CustomerName string    `field:"customer_id"`
-	MaterialType string    `field:"type"`
+	MaterialID     int       `field:"material_id"`
+	StockID        string    `field:"stock_id"`
+	LocationName   string    `field:"location_id"`
+	Description    string    `field:"description"`
+	Notes          string    `field:"notes"`
+	Quantity       int       `field:"quantity"`
+	MinRequiredQty int       `field:"min_required_quantity"`
+	MaxRequiredQty int       `field:"min_required_quantity"`
+	UpdatedAt      time.Time `field:"updated_at"`
+	CustomerName   string    `field:"customer_id"`
+	MaterialType   string    `field:"type"`
+	IsActive       string    `field:"is_active"`
 }
 
 type Transaction struct {
@@ -104,7 +107,12 @@ func showTransactions(app fyne.App, db *sql.DB) {
 
 func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 	rows, err := db.Query(`SELECT m.material_id, m.stock_id, l.name, m.description,
-							m.notes, m.quantity, m.updated_at, c.name, m.material_type
+							m.notes, m.quantity, m.min_required_quantity, m.max_required_quantity,
+							m.updated_at, c.name, m.material_type,
+								CASE
+									WHEN m.is_active THEN 'Yes'
+									ELSE 'No'
+								END AS is_active
 							FROM materials m
 							LEFT JOIN locations l ON m.location_id = l.location_id
 							LEFT JOIN customers c ON c.customer_id = m.customer_id
@@ -119,8 +127,11 @@ func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 	}
 
 	invList := [][]string{
-		{"Material ID", "Stock ID", "Location", "Material Type",
-			"Description", "Notes", "Quantity", "Updated At", "Customer"},
+		{
+			"Material ID", "Stock ID", "Location", "Material Type",
+			"Description", "Notes", "Quantity", "Min Required Qty",
+			"Max Required Qty", "Updated At", "Customer", "Is Active",
+		},
 	}
 
 	for rows.Next() {
@@ -147,8 +158,11 @@ func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 			inv.Description,
 			inv.Notes,
 			strconv.Itoa(inv.Quantity),
+			strconv.Itoa(inv.MinRequiredQty),
+			strconv.Itoa(inv.MaxRequiredQty),
 			inv.UpdatedAt.String(),
 			inv.CustomerName,
+			inv.IsActive,
 		})
 	}
 
@@ -167,7 +181,7 @@ func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 	for col := 0; col < len(invList[0]); col++ {
 		materialsTable.SetColumnWidth(col, float32(columnWidth))
 	}
-	materialsTable.SetColumnWidth(7, float32(300))
+	materialsTable.SetColumnWidth(9, float32(300))
 
 	return materialsTable
 }
@@ -182,7 +196,7 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 							LEFT JOIN locations l ON m.location_id = l.location_id
 							LEFT JOIN warehouses w ON l.warehouse_id = w.warehouse_id
 							LEFT JOIN customers c ON m.customer_id = c.customer_id
-							ORDER BY transaction_id`)
+							ORDER BY transaction_id DESC`)
 	if err != nil {
 		fmt.Printf("Error getTransactionsTable1: %e", err)
 	}

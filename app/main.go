@@ -44,6 +44,7 @@ func main() {
 			widget.NewButton("Replenish material", func() { addMaterial(myWindow, db) }),
 			widget.NewButton("Remove material", func() { removeMaterial(myWindow, db) }),
 			widget.NewButton("Move material", func() { moveMaterial(myWindow, db) }),
+			widget.NewButton("Handle a Material (CSR)", func() { createMaterial(myWindow, db) }),
 		)
 
 		infoContainer := container.New(layout.NewVBoxLayout(),
@@ -65,7 +66,7 @@ func main() {
 		)
 
 		myWindow.SetContent(content)
-		myWindow.Resize(fyne.NewSize(800, 300))
+		myWindow.Resize(fyne.NewSize(800, 700))
 		myWindow.ShowAndRun()
 	}
 }

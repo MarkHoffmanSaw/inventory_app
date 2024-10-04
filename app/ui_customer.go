@@ -12,13 +12,13 @@ import (
 func addCustomer(myWindow fyne.Window, db *sql.DB) {
 	nameInput := widget.NewEntry()
 	codeInput := widget.NewEntry()
-	typeSelect := widget.NewRadioGroup([]string{"Internal", "External"}, func(s string) {})
+	typeSelect := widget.NewRadioGroup([]string{"TAG Owned", "Customer Owned"}, func(s string) {})
 
 	dialog := dialog.NewForm("Add Customer", "Save", "Cancel",
 		[]*widget.FormItem{
 			widget.NewFormItem("Name", nameInput),
 			widget.NewFormItem("Code", codeInput),
-			widget.NewFormItem("Customer type", typeSelect),
+			widget.NewFormItem("Type", typeSelect),
 		}, func(confirm bool) {
 			if confirm {
 				if _, err := db.Exec("INSERT INTO customers (name, customer_code, customer_type) VALUES ($1,$2,$3)",

@@ -101,6 +101,35 @@ func fetchLocations(db *sql.DB) ([]Location, error) {
 	return locations, nil
 }
 
+func fetchEmptyLocations(db *sql.DB) ([]Location, error) {
+	rows, err := db.Query(`SELECT l.location_id, l.name, l.warehouse_id
+							FROM locations l
+							LEFT JOIN materials m
+							ON m.location_id = l.location_id
+							WHERE m.material_id is NULL`)
+	if err != nil {
+		log.Println("Error fetchEmptyLocations1: ", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var locations []Location
+
+	for rows.Next() {
+		var location Location
+		if err := rows.Scan(&location.id, &location.name, &location.warehouseID); err != nil {
+			log.Println("Error fetchEmptyLocations2: ", err)
+			return locations, err
+		}
+		locations = append(locations, location)
+	}
+	if err = rows.Err(); err != nil {
+		return locations, err
+	}
+
+	return locations, nil
+}
+
 func fetchMaterialsByCustomer(db *sql.DB, customerId int) ([]Material, error) {
 	rows, err := db.Query(`SELECT m.material_id, m.stock_id, l.name, m.description,
 							m.notes, m.quantity, m.updated_at, c.name, m.material_type
@@ -170,7 +199,7 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 		customersMap[customer.name] = customer.id
 	}
 
-	locations, _ := fetchLocations(db)
+	locations, _ := fetchEmptyLocations(db)
 	var locationsStr []string
 	locationsMap := make(map[string]int)
 	for _, location := range locations {
@@ -186,7 +215,11 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 	stockIDInput := widget.NewEntry()
 	descrInput := widget.NewEntry()
 	quantityInput := widget.NewEntry()
+	minRequiredQtyInput := widget.NewEntry()
+	maxRequiredQtyInput := widget.NewEntry()
+	costInput := widget.NewEntry()
 	notesInput := widget.NewEntry()
+	isActiveChkBox := widget.NewCheck("Active", func(b bool) {})
 
 	dialog := dialog.NewForm("Create Material", "Save", "Cancel",
 		[]*widget.FormItem{
@@ -196,28 +229,44 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 			widget.NewFormItem("Description", descrInput),
 			widget.NewFormItem("Type", typeSelector),
 			widget.NewFormItem("Quantity", quantityInput),
+			widget.NewFormItem("Min Required Quantity", minRequiredQtyInput),
+			widget.NewFormItem("Max Required Quantity", maxRequiredQtyInput),
+			widget.NewFormItem("Cost, USD", costInput),
 			widget.NewFormItem("Notes", notesInput),
+			widget.NewFormItem("", isActiveChkBox),
 		}, func(confirm bool) {
 			if confirm {
 				var material Material
-				quantity, _ := strconv.Atoi(quantityInput.Text)
+				quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
+				minRequiredQty, _ := strconv.Atoi(strings.Replace(minRequiredQtyInput.Text, ",", "", -1))
+				maxRequiredQty, _ := strconv.Atoi(strings.Replace(maxRequiredQtyInput.Text, ",", "", -1))
+				var isActive bool
+				if isActiveChkBox.Checked {
+					isActive = true
+				}
 
 				err := db.QueryRow(`INSERT INTO materials
-				(stock_id, location_id, customer_id, material_type, description, notes, quantity, updated_at)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING material_id;`,
+				(stock_id, location_id, customer_id, material_type, description, notes, quantity, updated_at,
+				min_required_quantity, max_required_quantity, is_active)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING material_id;`,
 					stockIDInput.Text, locationsMap[locationSelector.Selected], customersMap[customerSelector.Selected],
-					typeSelector.Selected, descrInput.Text, notesInput.Text, quantity, time.Now()).Scan(&material.MaterialID)
+					typeSelector.Selected, descrInput.Text, notesInput.Text, quantity, time.Now(),
+					minRequiredQty, maxRequiredQty, isActive,
+				).Scan(&material.MaterialID)
 
 				if err != nil {
 					log.Println("Error saving material:", err)
 					dialog.ShowInformation("Error", "Unable to save data: "+err.Error(), myWindow)
 				} else {
+					cost, _ := strconv.Atoi(strings.Replace(costInput.Text, ",", "", -1))
+
 					err := addTranscation(&TransactionInfo{
 						materialId: material.MaterialID,
 						stockId:    stockIDInput.Text,
 						quantity:   quantity,
 						notes:      notesInput.Text,
 						updatedAt:  time.Now(),
+						cost:       cost,
 					}, db)
 
 					if err != nil {
@@ -273,7 +322,7 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 						if confirm {
 							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
 							locationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
-							quantity, _ := strconv.Atoi(quantityInput.Text)
+							quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
 							materialId := materialsMap[[2]string{stockId, locationName}]
 							notes := notesInput.Text
 
@@ -354,7 +403,7 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 					},
 					func(confirm bool) {
 						if confirm {
-							quantity, _ := strconv.Atoi(quantityInput.Text)
+							quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
 							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
 							locationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
 							materialId := materialsMap[[2]string{stockId, locationName}]
@@ -409,7 +458,7 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 		customersMap[customer.name] = customer.id
 	}
 
-	locations, _ := fetchLocations(db)
+	locations, _ := fetchEmptyLocations(db)
 	var locationsStr []string
 	locationsMap := make(map[string]int)
 	for _, location := range locations {
@@ -432,7 +481,6 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 
 	dialogCustomer := dialog.NewCustomConfirm("Choose customer", "OK", "Cancel", customerSelector,
 		func(confirm bool) {
-			log.Println(confirm, len(customerSelector.Selected))
 			if confirm && customerSelector.Selected != "" {
 				stockIDEntrySelect := widget.NewSelectEntry(materialsStr)
 				locationSelect := widget.NewSelect(locationsStr, func(s string) {})
@@ -445,7 +493,7 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 						widget.NewFormItem("Stock ID", stockIDEntrySelect),
 						widget.NewFormItem("New Location", locationSelect),
 						widget.NewFormItem("Move Quantity", quantityInput),
-						widget.NewFormItem("Cost (within warehouse)", costInput),
+						widget.NewFormItem("Cost USD", costInput),
 						widget.NewFormItem("Notes", notesInput),
 					},
 					func(confirm bool) {
@@ -456,9 +504,9 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 							currentLocationId := locationsMap[currLocationName]
 
 							newLocationId := locationsMap[locationSelect.Selected]
-							quantity, _ := strconv.Atoi(quantityInput.Text)
+							quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
 							notes := notesInput.Text
-							cost, _ := strconv.Atoi(costInput.Text)
+							cost, _ := strconv.Atoi(strings.Replace(costInput.Text, ",", "", -1))
 
 							var currMaterial MaterialInfo
 

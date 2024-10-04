@@ -1,6 +1,6 @@
 CREATE DATABASE tag_db;
 
-CREATE TYPE customer_type AS ENUM ('Internal', 'External');
+CREATE TYPE customer_type AS ENUM ('TAG Owned', 'Customer Owned');
 
 CREATE TABLE customers (
 	customer_id serial PRIMARY KEY,
@@ -32,17 +32,19 @@ CREATE TABLE materials (
 	description TEXT,
 	notes TEXT,
 	quantity int  NOT NULL,
+	min_required_quantity int,
+	max_required_quantity int,
 	updated_at TIMESTAMP,
 	CONSTRAINT pk_stock_id_location_id PRIMARY KEY (stock_id, location_id)
 );
 
 CREATE TABLE transactions_log (
 	transaction_id serial PRIMARY KEY,
-	material_id int,
-	stock_id VARCHAR(100),
-	quantity_change int,
+	material_id int NOT NULL,
+	stock_id VARCHAR(100) NOT NULL,
+	quantity_change int NOT NULL,
 	notes text,
-	cost int,
+	cost decimal,
 	job_ticket VARCHAR(100),
 	updated_at timestamp
 );
