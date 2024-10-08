@@ -2,15 +2,21 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
+
+var materialTypes = []string{"Envelope", "Card", "Carrier", "Insert", "Consumables"}
 
 type Location struct {
 	id          int    `field:"location_id"`
@@ -37,6 +43,18 @@ type MaterialInfo struct {
 	updated_at   time.Time `field:"updated_at"`
 }
 
+type IncomingMaterial struct {
+	ShippingID   int    `field:"shipping_id"`
+	CustomerName string `field:"customer_name"`
+	StockID      string `field:"stock_id"`
+	Cost         int    `field:"cost"`
+	Quantity     int    `field:"quantity"`
+	MinQty       int    `field:"min_required_quantity"`
+	MaxQty       int    `field:"max_required_quantity"`
+	Notes        string `field:"notes"`
+	IsActive     bool   `field:"is_active"`
+}
+
 type TransactionInfo struct {
 	materialId int       `field:"material_id"`
 	stockId    string    `field:"stock_id"`
@@ -45,6 +63,12 @@ type TransactionInfo struct {
 	cost       int       `field:"cost"`
 	updatedAt  time.Time `field:"updated_at"`
 	jobTicket  string    `field:"job_ticket"`
+}
+
+type MaterialOpts struct {
+	customerName string
+	stockID      string
+	quantity     int
 }
 
 //////////////////////////////////////////
@@ -189,8 +213,132 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 // Update the current materials quantity within locations
 //////////////////////////////////////////////////////////
 
+// Accept a material for warehouse handling
+func acceptMaterial(myWindow fyne.Window, db *sql.DB) {
+	customers, _ := fetchCustomers(db)
+	var customersStr []string
+	customersMap := make(map[string]int)
+	for _, customer := range customers {
+		customersStr = append(customersStr, customer.name)
+		customersMap[customer.name] = customer.id
+	}
+
+	customerInputSelector := widget.NewSelectEntry(customersStr)
+	stockIDInput := widget.NewEntry()
+	typeSelector := widget.NewSelect(materialTypes, func(s string) {})
+	quantityInput := widget.NewEntry()
+	costInput := widget.NewEntry()
+	minRequiredQtyInput := widget.NewEntry()
+	maxRequiredQtyInput := widget.NewEntry()
+	notesInput := widget.NewEntry()
+	isActiveChkBox := widget.NewCheck("Active", func(b bool) {})
+
+	dialog := dialog.NewForm("Accept a Material", "Send", "Cancel",
+		[]*widget.FormItem{
+			widget.NewFormItem("Customer", customerInputSelector),
+			widget.NewFormItem("Stock ID", stockIDInput),
+			widget.NewFormItem("Type", typeSelector),
+			widget.NewFormItem("Quantity", quantityInput),
+			widget.NewFormItem("Cost, USD", costInput),
+			widget.NewFormItem("Min Required Quantity", minRequiredQtyInput),
+			widget.NewFormItem("Max Required Quantity", maxRequiredQtyInput),
+			widget.NewFormItem("Notes", notesInput),
+			widget.NewFormItem("", isActiveChkBox),
+		}, func(confirm bool) {
+			if confirm {
+				_, err := db.Query(`
+				INSERT INTO incoming_materials
+					(customer_name, stock_id, cost, quantity,
+					max_required_quantity, min_required_quantity, notes, is_active)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+					customerInputSelector.Text, stockIDInput.Text, costInput.Text,
+					quantityInput.Text, maxRequiredQtyInput.Text, minRequiredQtyInput.Text,
+					notesInput.Text, isActiveChkBox.Checked,
+				)
+
+				if err != nil {
+					dialog.ShowInformation("Error", "Updating transactions error: "+err.Error(), myWindow)
+				} else {
+					dialog.ShowInformation("Success", "The material has been sent to the Warehouse ", myWindow)
+				}
+			}
+		}, myWindow)
+
+	dialog.Resize(fyne.NewSize(600, 400))
+	dialog.Show()
+}
+
+func acceptIncomingMaterials(app fyne.App, db *sql.DB) {
+	window := app.NewWindow("Incoming Materials")
+
+	rows, err := db.Query(`SELECT * FROM incoming_materials;`)
+	if err != nil {
+		fmt.Printf("Error acceptIncomingMaterials1: %e", err)
+	}
+
+	materialsArr := []IncomingMaterial{}
+
+	for rows.Next() {
+		material := IncomingMaterial{}
+
+		s := reflect.ValueOf(&material).Elem()
+		numCols := s.NumField()
+		columns := make([]interface{}, numCols)
+		for i := 0; i < numCols; i++ {
+			field := s.Field(i)
+			columns[i] = field.Addr().Interface()
+		}
+
+		err := rows.Scan(columns...)
+		if err != nil {
+			log.Printf("Error acceptIncomingMaterials2: %e", err)
+		}
+
+		materialsArr = append(materialsArr, IncomingMaterial{
+			material.ShippingID,
+			material.CustomerName,
+			material.StockID,
+			material.Cost,
+			material.Quantity,
+			material.MinQty,
+			material.MaxQty,
+			material.Notes,
+			material.IsActive,
+		})
+	}
+
+	materialWidgets := []fyne.CanvasObject{}
+
+	for i := 0; i < len(materialsArr); i++ {
+		material := materialsArr[i]
+
+		materialWidgets = append(materialWidgets,
+			container.New(layout.NewGridLayoutWithColumns(4),
+				widget.NewLabel("Customer: "+material.CustomerName),
+				widget.NewLabel("Stock ID: "+material.StockID),
+				widget.NewLabel("Quantity: "+strconv.Itoa(material.Quantity)),
+				widget.NewButton("Add", func() {
+					var materialOpts = MaterialOpts{}
+					materialOpts.customerName = material.CustomerName
+					materialOpts.stockID = material.StockID
+					materialOpts.quantity = material.Quantity
+
+					createMaterial(window, db, materialOpts)
+				}),
+			),
+			widget.NewSeparator(),
+		)
+	}
+
+	vBox := container.New(layout.NewVBoxLayout(), materialWidgets...)
+	window.SetContent(vBox)
+	window.Resize(fyne.NewSize(800, 700))
+	window.Show()
+
+}
+
 // Create a new material in a location
-func createMaterial(myWindow fyne.Window, db *sql.DB) {
+func createMaterial(myWindow fyne.Window, db *sql.DB, materialOpts MaterialOpts) {
 	customers, _ := fetchCustomers(db)
 	var customersStr []string
 	customersMap := make(map[string]int)
@@ -207,11 +355,9 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 		locationsMap[location.name] = location.id
 	}
 
-	types := []string{"Envelope", "Card", "Carrier", "Insert", "Consumables"}
-
 	customerSelector := widget.NewSelect(customersStr, func(s string) {})
 	locationSelector := widget.NewSelect(locationsStr, func(s string) {})
-	typeSelector := widget.NewSelect(types, func(s string) {})
+	typeSelector := widget.NewSelect(materialTypes, func(s string) {})
 	stockIDInput := widget.NewEntry()
 	descrInput := widget.NewEntry()
 	quantityInput := widget.NewEntry()
@@ -220,6 +366,10 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 	costInput := widget.NewEntry()
 	notesInput := widget.NewEntry()
 	isActiveChkBox := widget.NewCheck("Active", func(b bool) {})
+
+	customerSelector.SetSelected(materialOpts.customerName)
+	stockIDInput.SetText(materialOpts.stockID)
+	quantityInput.SetText(strconv.Itoa(materialOpts.quantity))
 
 	dialog := dialog.NewForm("Create Material", "Save", "Cancel",
 		[]*widget.FormItem{
@@ -247,11 +397,11 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 
 				err := db.QueryRow(`INSERT INTO materials
 				(stock_id, location_id, customer_id, material_type, description, notes, quantity, updated_at,
-				min_required_quantity, max_required_quantity, is_active)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING material_id;`,
+				min_required_quantity, max_required_quantity, is_active, cost)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING material_id;`,
 					stockIDInput.Text, locationsMap[locationSelector.Selected], customersMap[customerSelector.Selected],
 					typeSelector.Selected, descrInput.Text, notesInput.Text, quantity, time.Now(),
-					minRequiredQty, maxRequiredQty, isActive,
+					minRequiredQty, maxRequiredQty, isActive, costInput.Text,
 				).Scan(&material.MaterialID)
 
 				if err != nil {
@@ -283,6 +433,7 @@ func createMaterial(myWindow fyne.Window, db *sql.DB) {
 }
 
 // Add a new material to a location
+/*
 func addMaterial(myWindow fyne.Window, db *sql.DB) {
 	customers, _ := fetchCustomers(db)
 	var customersStr []string
@@ -361,7 +512,7 @@ func addMaterial(myWindow fyne.Window, db *sql.DB) {
 
 	dialogCustomer.Resize(fyne.NewSize(300, 100))
 	dialogCustomer.Show()
-}
+}*/
 
 // Remove a material from a location
 func removeMaterial(myWindow fyne.Window, db *sql.DB) {

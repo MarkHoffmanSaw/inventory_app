@@ -32,9 +32,11 @@ CREATE TABLE materials (
 	description TEXT,
 	notes TEXT,
 	quantity int  NOT NULL,
+	cost DECIMAL NOT NULL,
 	min_required_quantity int,
 	max_required_quantity int,
 	updated_at TIMESTAMP,
+	is_active BOOLEAN NOT NULL,
 	CONSTRAINT pk_stock_id_location_id PRIMARY KEY (stock_id, location_id)
 );
 
@@ -44,7 +46,19 @@ CREATE TABLE transactions_log (
 	stock_id VARCHAR(100) NOT NULL,
 	quantity_change int NOT NULL,
 	notes text,
-	cost decimal,
+	cost int,
 	job_ticket VARCHAR(100),
 	updated_at timestamp
+);
+
+CREATE TABLE incoming_materials (
+	shipping_id SERIAL PRIMARY KEY,
+	customer_name VARCHAR(100) NOT NULL,
+	stock_id VARCHAR(100) NOT NULL,
+	cost DECIMAL NOT NULL,
+	quantity INT NOT NULL,
+	max_quantity INT NOT NULL,
+	min_quantity INT NOT NULL,
+	notes VARCHAR(100),
+	isActive BOOLEAN NOT NULL,
 );

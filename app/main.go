@@ -30,39 +30,50 @@ func main() {
 		mainLabel.Alignment = fyne.TextAlignCenter
 
 		customerContainer := container.New(layout.NewVBoxLayout(),
-			widget.NewLabel("Customer settings"),
-			widget.NewButton("Add customer", func() { addCustomer(myWindow, db) }))
+			widget.NewLabel("Customers"),
+			widget.NewButton("Add a Customer", func() { addCustomer(myWindow, db) }))
 
 		warehouseContainer := container.New(layout.NewVBoxLayout(),
-			widget.NewLabel("Warehouse settings"),
-			widget.NewButton("Add warehouse", func() { addWarehouse(myWindow, db) }),
+			widget.NewLabel("Warehouses"),
+			widget.NewButton("Add a Warehouse/Location", func() { addWarehouse(myWindow, db) }),
 		)
 
 		materialContainer := container.New(layout.NewVBoxLayout(),
-			widget.NewLabel("Material settings"),
-			widget.NewButton("Create material", func() { createMaterial(myWindow, db) }),
-			widget.NewButton("Replenish material", func() { addMaterial(myWindow, db) }),
-			widget.NewButton("Remove material", func() { removeMaterial(myWindow, db) }),
-			widget.NewButton("Move material", func() { moveMaterial(myWindow, db) }),
-			widget.NewButton("Handle a Material (CSR)", func() { createMaterial(myWindow, db) }),
+			widget.NewLabel("Materials"),
+			widget.NewButton("Accept incoming materials", func() { acceptIncomingMaterials(myApp, db) }),
+			// widget.NewButton("Add a Material", func() { createMaterial(myWindow, db, MaterialOpts{}) }),
+			// widget.NewButton("Replenish material", func() { addMaterial(myWindow, db) }),
+			widget.NewButton("Remove a Material", func() { removeMaterial(myWindow, db) }),
+			widget.NewButton("Move a Material", func() { moveMaterial(myWindow, db) }),
 		)
 
 		infoContainer := container.New(layout.NewVBoxLayout(),
-			widget.NewLabel("Info Tables"),
-			widget.NewButton("Show inventory list", func() { showInventory(myApp, db, myWindow) }),
-			widget.NewButton("Show transactions", func() { showTransactions(myApp, db) }),
+			widget.NewLabel("Tables"),
+			widget.NewButton("Inventory List", func() { showInventory(myApp, db, myWindow) }),
+			widget.NewButton("Transactions", func() { showTransactions(myApp, db) }),
 		)
 
-		buttonsContainer := container.New(layout.NewGridLayoutWithColumns(4),
+		CSRContainer := container.New(layout.NewVBoxLayout(),
+			widget.NewLabel("CSR management"),
+			widget.NewButton("Send a Material to the Warehouse", func() { acceptMaterial(myWindow, db) }),
+		)
+
+		warehouseActionsContainer := container.New(layout.NewGridLayoutWithColumns(4),
 			customerContainer,
 			warehouseContainer,
 			materialContainer,
 			infoContainer,
 		)
 
+		CSRActionsContainer := container.New(layout.NewGridLayoutWithColumns(4),
+			CSRContainer,
+		)
+
 		content := container.New(layout.NewVBoxLayout(),
 			mainLabel,
-			buttonsContainer,
+			warehouseActionsContainer,
+			widget.NewSeparator(),
+			CSRActionsContainer,
 		)
 
 		myWindow.SetContent(content)
