@@ -4,7 +4,7 @@ CREATE TYPE customer_type AS ENUM ('TAG Owned', 'Customer Owned');
 
 CREATE TABLE customers (
 	customer_id serial PRIMARY KEY,
-	name VARCHAR(100) NOT NULL,
+	name VARCHAR(100) NOT NULL UNIQUE,
 	customer_code VARCHAR(100),
 	customer_type CUSTOMER_TYPE  NOT NULL
 );
@@ -46,7 +46,7 @@ CREATE TABLE transactions_log (
 	stock_id VARCHAR(100) NOT NULL,
 	quantity_change int NOT NULL,
 	notes text,
-	cost int,
+	cost DECIMAL,
 	job_ticket VARCHAR(100),
 	updated_at timestamp
 );
@@ -57,8 +57,9 @@ CREATE TABLE incoming_materials (
 	stock_id VARCHAR(100) NOT NULL,
 	cost DECIMAL NOT NULL,
 	quantity INT NOT NULL,
-	max_quantity INT NOT NULL,
-	min_quantity INT NOT NULL,
+	min_required_quantity int,
+	max_required_quantity int,
 	notes VARCHAR(100),
-	isActive BOOLEAN NOT NULL,
+	is_active BOOLEAN NOT NULL,
+	type VARCHAR(100) NOT NULL
 );
