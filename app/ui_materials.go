@@ -77,6 +77,8 @@ type MaterialOpts struct {
 	maxQty       int
 	cost         float64
 	materialType string
+	isActive     bool
+	notes        string
 }
 
 //////////////////////////////////////////
@@ -360,6 +362,8 @@ func acceptIncomingMaterials(app fyne.App, db *sql.DB) {
 						minQty:       material.MinQty,
 						cost:         material.Cost,
 						materialType: material.MaterialType,
+						isActive:     material.IsActive,
+						notes:        material.Notes,
 					}
 
 					createMaterial(app, window, db, &materialOpts)
@@ -378,10 +382,8 @@ func acceptIncomingMaterials(app fyne.App, db *sql.DB) {
 // Create a new material in a location
 func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts *MaterialOpts) {
 	customers, _ := fetchCustomers(db)
-	var customersStr []string
 	customersMap := make(map[string]int)
 	for _, customer := range customers {
-		customersStr = append(customersStr, customer.name)
 		customersMap[customer.name] = customer.id
 	}
 
@@ -393,46 +395,39 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 		locationsMap[location.name] = location.id
 	}
 
-	customerSelector := widget.NewSelect(customersStr, func(s string) {})
+	customerLabel := widget.NewLabel(materialOpts.customerName)
 	locationSelector := widget.NewSelect(locationsStr, func(s string) {})
-	typeSelector := widget.NewSelect(materialTypes, func(s string) {})
-	stockIDInput := widget.NewEntry()
-	descrInput := widget.NewEntry()
+	typeLabel := widget.NewLabel(materialOpts.materialType)
+	stockIDLabel := widget.NewLabel(materialOpts.stockID)
+	descrLabel := widget.NewLabel(materialOpts.notes)
 	quantityInput := widget.NewEntry()
 	notesInput := widget.NewEntry()
-	isActiveChkBox := widget.NewCheck("Active", func(b bool) {})
+	isActiveLabel := widget.NewLabel(strconv.FormatBool(materialOpts.isActive))
 
-	customerSelector.SetSelected(materialOpts.customerName)
-	stockIDInput.SetText(materialOpts.stockID)
 	quantityInput.SetText(strconv.Itoa(materialOpts.quantity))
-	typeSelector.SetSelected(materialOpts.materialType)
 
 	dialog := dialog.NewForm("Create Material", "Save", "Cancel",
 		[]*widget.FormItem{
-			widget.NewFormItem("Customer", customerSelector),
-			widget.NewFormItem("Location", locationSelector),
-			widget.NewFormItem("Stock ID", stockIDInput),
-			widget.NewFormItem("Description", descrInput),
-			widget.NewFormItem("Type", typeSelector),
+			widget.NewFormItem("Customer", customerLabel),
+			widget.NewFormItem("Stock ID", stockIDLabel),
+			widget.NewFormItem("Type", typeLabel),
+			widget.NewFormItem("Is Active", isActiveLabel),
+			widget.NewFormItem("Description", descrLabel),
 			widget.NewFormItem("Quantity", quantityInput),
+			widget.NewFormItem("Location", locationSelector),
 			widget.NewFormItem("Notes", notesInput),
-			widget.NewFormItem("", isActiveChkBox),
 		}, func(confirm bool) {
 			if confirm {
 				var material Material
 				quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
-				var isActive bool
-				if isActiveChkBox.Checked {
-					isActive = true
-				}
 
 				err := db.QueryRow(`INSERT INTO materials
 				(stock_id, location_id, customer_id, material_type, description, notes, quantity, updated_at,
 				min_required_quantity, max_required_quantity, is_active, cost)
 				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING material_id;`,
-					stockIDInput.Text, locationsMap[locationSelector.Selected], customersMap[customerSelector.Selected],
-					typeSelector.Selected, descrInput.Text, notesInput.Text, quantity, time.Now(),
-					materialOpts.minQty, materialOpts.maxQty, isActive, materialOpts.cost,
+					materialOpts.stockID, locationsMap[locationSelector.Selected], customersMap[materialOpts.customerName],
+					materialOpts.materialType, materialOpts.notes, notesInput.Text, quantity, time.Now(),
+					materialOpts.minQty, materialOpts.maxQty, materialOpts.isActive, materialOpts.cost,
 				).Scan(&material.MaterialID)
 
 				if err != nil {
@@ -448,7 +443,7 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 
 						err := addTranscation(&TransactionInfo{
 							materialId: material.MaterialID,
-							stockId:    stockIDInput.Text,
+							stockId:    materialOpts.stockID,
 							quantity:   quantity,
 							notes:      notesInput.Text,
 							updatedAt:  time.Now(),
