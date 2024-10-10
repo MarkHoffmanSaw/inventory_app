@@ -5,12 +5,14 @@ import (
 	"log"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/data/validation"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
 func addCustomer(myWindow fyne.Window, db *sql.DB) {
 	nameInput := widget.NewEntry()
+	nameInput.Validator = validation.NewRegexp(`^\d*[a-zA-Z][a-zA-Z0-9]*$`, "Enter a name")
 	codeInput := widget.NewEntry()
 	typeSelect := widget.NewRadioGroup([]string{"TAG Owned", "Customer Owned"}, func(s string) {})
 

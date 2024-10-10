@@ -26,6 +26,7 @@ type Material struct {
 	CustomerName   string    `field:"customer_id"`
 	MaterialType   string    `field:"type"`
 	IsActive       string    `field:"is_active"`
+	Cost           float64   `field:"cost"`
 }
 
 type Transaction struct {
@@ -34,7 +35,7 @@ type Transaction struct {
 	StockId       string    `field:"stock_id"`
 	Quantity      int       `field:"quantity_change"`
 	Notes         string    `field:"notes"`
-	Cost          int       `field:"cost"`
+	Cost          float64   `field:"cost"`
 	UpdatedAt     time.Time `field:"updated_at"`
 	JobTicket     string    `field:"job_ticket"`
 	LocationName  string    `field:"location_name"`
@@ -112,7 +113,8 @@ func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 								CASE
 									WHEN m.is_active THEN 'Yes'
 									ELSE 'No'
-								END AS is_active
+								END AS is_active,
+							m.cost
 							FROM materials m
 							LEFT JOIN locations l ON m.location_id = l.location_id
 							LEFT JOIN customers c ON c.customer_id = m.customer_id
@@ -160,7 +162,7 @@ func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 			strconv.Itoa(inv.Quantity),
 			strconv.Itoa(inv.MinRequiredQty),
 			strconv.Itoa(inv.MaxRequiredQty),
-			inv.UpdatedAt.String(),
+			inv.UpdatedAt.Format("2006-01-03 15:04:05"),
 			inv.CustomerName,
 			inv.IsActive,
 		})
@@ -181,7 +183,6 @@ func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 	for col := 0; col < len(invList[0]); col++ {
 		materialsTable.SetColumnWidth(col, float32(columnWidth))
 	}
-	materialsTable.SetColumnWidth(9, float32(300))
 
 	return materialsTable
 }
@@ -205,7 +206,7 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 		{
 			"Transaction ID", "Stock ID",
 			"Quantity Change", "Notes",
-			"Cost", "Updated At",
+			"Unit Cost", "Updated At",
 			"Job Ticket", "Location",
 			"Warehouse", "Customer",
 		},
@@ -234,8 +235,8 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 			trx.StockId,
 			strconv.Itoa(trx.Quantity),
 			trx.Notes,
-			strconv.Itoa(trx.Cost),
-			trx.UpdatedAt.String(),
+			strconv.FormatFloat(trx.Cost, 'f', -1, 64),
+			trx.UpdatedAt.Format("2006-01-03 15:04:05"),
 			trx.JobTicket,
 			trx.LocationName,
 			trx.WarehouseName,
@@ -258,8 +259,6 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 	for col := 0; col < len(trxList[0]); col++ {
 		transactionsTable.SetColumnWidth(col, float32(columnWidth))
 	}
-
-	transactionsTable.SetColumnWidth(5, float32(300))
 
 	return transactionsTable
 }

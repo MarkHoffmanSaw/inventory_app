@@ -33,14 +33,11 @@ func main() {
 			widget.NewLabel("Customers"),
 			widget.NewButton("Add a Customer", func() { addCustomer(myWindow, db) }))
 
-		warehouseContainer := container.New(layout.NewVBoxLayout(),
-			widget.NewLabel("Warehouses"),
-			widget.NewButton("Add a Warehouse/Location", func() { addWarehouse(myWindow, db) }),
-		)
-
 		materialContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Materials"),
-			widget.NewButton("Accept incoming materials", func() { acceptIncomingMaterials(myApp, db) }),
+			widget.NewButton("Add a Warehouse/Location", func() { addWarehouse(myWindow, db) }),
+			widget.NewButton("Send a Material", func() { sendMaterial(myWindow, db) }),
+			widget.NewButton("Incoming Materials", func() { acceptIncomingMaterials(myApp, db) }),
 			// widget.NewButton("Add a Material", func() { createMaterial(myWindow, db, MaterialOpts{}) }),
 			// widget.NewButton("Replenish material", func() { addMaterial(myWindow, db) }),
 			widget.NewButton("Remove a Material", func() { removeMaterial(myWindow, db) }),
@@ -53,31 +50,19 @@ func main() {
 			widget.NewButton("Transactions", func() { showTransactions(myApp, db) }),
 		)
 
-		CSRContainer := container.New(layout.NewVBoxLayout(),
-			widget.NewLabel("CSR management"),
-			widget.NewButton("Send a Material to the Warehouse", func() { acceptMaterial(myWindow, db) }),
-		)
-
-		warehouseActionsContainer := container.New(layout.NewGridLayoutWithColumns(4),
+		warehouseActionsContainer := container.New(layout.NewGridLayoutWithColumns(3),
 			customerContainer,
-			warehouseContainer,
 			materialContainer,
 			infoContainer,
-		)
-
-		CSRActionsContainer := container.New(layout.NewGridLayoutWithColumns(4),
-			CSRContainer,
 		)
 
 		content := container.New(layout.NewVBoxLayout(),
 			mainLabel,
 			warehouseActionsContainer,
-			widget.NewSeparator(),
-			CSRActionsContainer,
 		)
 
 		myWindow.SetContent(content)
-		myWindow.Resize(fyne.NewSize(800, 700))
+		myWindow.Resize(fyne.NewSize(800, 600))
 		myWindow.ShowAndRun()
 	}
 }
