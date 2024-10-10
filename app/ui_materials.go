@@ -607,34 +607,43 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 							notes := notesInput.Text
 
 							// Verify that we have the remaining materials
-							// var actualQuantity int
-							// db.QueryRow(`SELECT quantity FROM materials WHERE material_id = $1`, materialId).Scan(&actualQuantity)
+							var actualQuantity int
+							db.QueryRow(`SELECT quantity FROM materials WHERE material_id = $1`, materialId).Scan(&actualQuantity)
 
-							_, err := db.Exec(`
+							if (actualQuantity - quantity) < 0 {
+								dialog.ShowInformation(
+									"Error",
+									`The removing quantity (`+strconv.Itoa(quantity)+`) is more than the actual one (`+strconv.Itoa(actualQuantity)+`)`,
+									myWindow)
+							} else {
+								// Update the material quantity
+								_, err := db.Exec(`
 							UPDATE materials
 							SET quantity = (quantity - $1),
 								notes = $2
 							WHERE material_id = $3;
 							`, quantity, notes, materialId,
-							)
-
-							if err != nil {
-								dialog.ShowInformation("Error", "Updating material error: "+err.Error(), myWindow)
-							} else {
-								err := addTranscation(&TransactionInfo{
-									materialId: materialId,
-									stockId:    stockId,
-									quantity:   -quantity,
-									notes:      notes,
-									jobTicket:  jobTicket,
-									updatedAt:  time.Now(),
-									cost:       materialsCost[materialId],
-								}, db)
+								)
 
 								if err != nil {
-									dialog.ShowInformation("Error", "Updating transactions error: "+err.Error(), myWindow)
+									dialog.ShowInformation("Error", "Updating material error: "+err.Error(), myWindow)
+
 								} else {
-									dialog.ShowInformation("Success", "Material updated", myWindow)
+									err := addTranscation(&TransactionInfo{
+										materialId: materialId,
+										stockId:    stockId,
+										quantity:   -quantity,
+										notes:      notes,
+										jobTicket:  jobTicket,
+										updatedAt:  time.Now(),
+										cost:       materialsCost[materialId],
+									}, db)
+
+									if err != nil {
+										dialog.ShowInformation("Error", "Updating transactions error: "+err.Error(), myWindow)
+									} else {
+										dialog.ShowInformation("Success", "Material has been removed. The remaining quantity: "+strconv.Itoa(actualQuantity-quantity), myWindow)
+									}
 								}
 							}
 						}
