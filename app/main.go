@@ -36,7 +36,7 @@ func main() {
 		materialContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Materials"),
 			widget.NewButton("Add a Warehouse/Location", func() { addWarehouse(myWindow, db) }),
-			widget.NewButton("Send a Material for Warehouse", func() { sendMaterial(myWindow, db) }),
+			widget.NewButton("Send a Material to Warehouse", func() { sendMaterial(myWindow, db) }),
 			widget.NewButton("Incoming Materials", func() { acceptIncomingMaterials(myApp, db) }),
 			// widget.NewButton("Add a Material", func() { createMaterial(myWindow, db, MaterialOpts{}) }),
 			// widget.NewButton("Replenish material", func() { addMaterial(myWindow, db) }),
