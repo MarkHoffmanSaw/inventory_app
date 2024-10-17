@@ -41,6 +41,7 @@ type Transaction struct {
 	LocationName  string    `field:"location_name"`
 	WarehouseName string    `field:"warehouse_name"`
 	CustomerName  string    `field:"customer_name"`
+	RemainingQty  int       `field:"remaining_quantity"`
 }
 
 type InventoryFilter struct {
@@ -191,13 +192,14 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 	rows, err := db.Query(`SELECT transaction_id, m.material_id as material_id,
 							m.stock_id as stock_id, tl.quantity_change,
 							tl.notes, tl.cost, tl.updated_at, tl.job_ticket,
-							l.name as location_name, w.name as warehouse_name, c.name as customer_name
+							l.name as location_name, w.name as warehouse_name,
+							c.name as customer_name, tl.remaining_quantity
 							FROM transactions_log tl
 							LEFT JOIN materials m ON m.material_id = tl.material_id
 							LEFT JOIN locations l ON m.location_id = l.location_id
 							LEFT JOIN warehouses w ON l.warehouse_id = w.warehouse_id
 							LEFT JOIN customers c ON m.customer_id = c.customer_id
-							ORDER BY transaction_id DESC`)
+							ORDER BY transaction_id ASC;`)
 	if err != nil {
 		fmt.Printf("Error getTransactionsTable1: %e", err)
 	}
@@ -208,7 +210,7 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 			"Quantity Change", "Notes",
 			"Unit Cost", "Updated At",
 			"Job Ticket", "Location",
-			"Warehouse", "Customer",
+			"Warehouse", "Customer", "Remaining Qty",
 		},
 	}
 
@@ -241,6 +243,7 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 			trx.LocationName,
 			trx.WarehouseName,
 			trx.CustomerName,
+			strconv.Itoa(trx.RemainingQty),
 		})
 	}
 

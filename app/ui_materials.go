@@ -138,35 +138,6 @@ func fetchLocations(db *sql.DB) ([]Location, error) {
 	return locations, nil
 }
 
-func fetchEmptyLocations(db *sql.DB) ([]Location, error) {
-	rows, err := db.Query(`SELECT l.location_id, l.name, l.warehouse_id
-							FROM locations l
-							LEFT JOIN materials m
-							ON m.location_id = l.location_id
-							WHERE m.material_id is NULL`)
-	if err != nil {
-		log.Println("Error fetchEmptyLocations1: ", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var locations []Location
-
-	for rows.Next() {
-		var location Location
-		if err := rows.Scan(&location.id, &location.name, &location.warehouseID); err != nil {
-			log.Println("Error fetchEmptyLocations2: ", err)
-			return locations, err
-		}
-		locations = append(locations, location)
-	}
-	if err = rows.Err(); err != nil {
-		return locations, err
-	}
-
-	return locations, nil
-}
-
 func fetchLocationsByCustomer(db *sql.DB, customerId int, stockId string) ([]Location, error) {
 	rows, err := db.Query(`
 		SELECT l.location_id, l.name, l.warehouse_id
@@ -240,17 +211,102 @@ func fetchMaterialsByCustomer(db *sql.DB, customerId int) ([]Material, error) {
 }
 
 func addTranscation(trx *TransactionInfo, db *sql.DB) error {
-	_, err := db.Exec(
-		`INSERT INTO transactions_log (material_id, stock_id, quantity_change, notes, cost, job_ticket, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
-		 `, trx.materialId, trx.stockId, trx.quantity, trx.notes, trx.cost, trx.jobTicket, trx.updatedAt,
-	)
+	if trx.quantity < 0 {
+		removingQty := int(math.Abs(float64(trx.quantity)))
 
-	if err != nil {
-		return err
+		emptyCost := []string{}
+
+		for removingQty > 0 {
+			var transaction_id int
+			var cost float64
+			var remainingQty int
+
+			// Look up for any balances after deductions
+			db.QueryRow(`
+				SELECT transaction_id, cost, remaining_quantity FROM transactions_log
+				WHERE stock_id = $1 AND quantity_change < 0
+				ORDER BY transaction_id DESC LIMIT 1;
+						`,
+				trx.stockId).Scan(&transaction_id, &cost, &remainingQty)
+
+			// If there are no deductions then find an material income batch
+			if transaction_id == 0 {
+				db.QueryRow(`
+					SELECT transaction_id, cost, remaining_quantity FROM transactions_log
+					WHERE stock_id = $1 AND quantity_change > 0
+						
+					ORDER BY transaction_id LIMIT 1;
+							`,
+					trx.stockId,
+				).Scan(&transaction_id, &cost, &remainingQty)
+			}
+
+			// If there is no more materials on the found batch
+			// then find the next income batch (not including the old unit cost)
+			if remainingQty == 0 {
+				emptyCost = append(emptyCost, strconv.FormatFloat(cost, 'f', -1, 64))
+
+				db.QueryRow(`
+					SELECT transaction_id, cost, remaining_quantity FROM transactions_log
+					WHERE stock_id = $1 AND quantity_change > 0
+						AND cost NOT IN (`+strings.Join(emptyCost, ",")+`)
+					ORDER BY transaction_id LIMIT 1;
+							`,
+					trx.stockId,
+				).Scan(&transaction_id, &cost, &remainingQty)
+			}
+
+			// Deduct from the balance
+			if remainingQty < removingQty {
+				removingQty -= remainingQty
+
+				_, errInsert := db.Exec(
+					`INSERT INTO transactions_log
+							(material_id, stock_id, quantity_change, notes,
+							cost, job_ticket, updated_at, remaining_quantity)
+							 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+							 `, trx.materialId, trx.stockId, -remainingQty, trx.notes,
+					cost, trx.jobTicket, trx.updatedAt, 0)
+
+				if errInsert != nil {
+					log.Println("err1", errInsert)
+					return errInsert
+				}
+
+			} else if remainingQty >= removingQty {
+				remainingQty -= removingQty
+
+				_, errInsert := db.Exec(
+					`INSERT INTO transactions_log
+							(material_id, stock_id, quantity_change, notes,
+							cost, job_ticket, updated_at, remaining_quantity)
+							 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+							 `, trx.materialId, trx.stockId, -removingQty, trx.notes,
+					cost, trx.jobTicket, trx.updatedAt, remainingQty)
+
+				if errInsert != nil {
+					log.Println("err2", errInsert)
+					return errInsert
+				}
+
+				removingQty = 0
+			}
+		}
 	} else {
-		return nil
+		_, errInsert := db.Exec(
+			`INSERT INTO transactions_log
+			(material_id, stock_id, quantity_change, notes,
+			cost, job_ticket, updated_at, remaining_quantity)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			 `, trx.materialId, trx.stockId, trx.quantity, trx.notes,
+			trx.cost, trx.jobTicket, trx.updatedAt, trx.quantity)
+
+		if errInsert != nil {
+			return errInsert
+		}
 	}
+
+	return nil
 }
 
 func deleteIncomingMaterial(db *sql.DB, shippingId int) error {
@@ -625,7 +681,6 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 	var materials []Material
 	var materialsStr []string
 	materialsMap := make(map[[2]string]int)
-	materialsCost := make(map[int]float64)
 
 	customerSelector := widget.NewSelect(customersStr, func(customerName string) {
 		customerId := customersMap[customerName]
@@ -633,7 +688,7 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 		for _, material := range materials {
 			materialsStr = append(materialsStr, material.StockID+"|"+material.LocationName)
 			materialsMap[[2]string{material.StockID, material.LocationName}] = material.MaterialID
-			materialsCost[material.MaterialID] = material.Cost
+
 		}
 	})
 
@@ -654,6 +709,7 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 					},
 					func(confirm bool) {
 						if confirm {
+
 							quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
 							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
 							locationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
@@ -671,13 +727,14 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 									`The removing quantity (`+strconv.Itoa(quantity)+`) is more than the actual one (`+strconv.Itoa(actualQuantity)+`)`,
 									myWindow)
 							} else {
+
 								// Update the material quantity
 								_, err := db.Exec(`
-							UPDATE materials
-							SET quantity = (quantity - $1),
-								notes = $2
-							WHERE material_id = $3;
-							`, quantity, notes, materialId,
+									UPDATE materials
+									SET quantity = (quantity - $1),
+										notes = $2
+									WHERE material_id = $3;
+									`, quantity, notes, materialId,
 								)
 
 								if err != nil {
@@ -691,7 +748,6 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 										notes:      notes,
 										jobTicket:  jobTicket,
 										updatedAt:  time.Now(),
-										cost:       materialsCost[materialId],
 									}, db)
 
 									if err != nil {
