@@ -48,7 +48,8 @@ CREATE TABLE transactions_log (
 	notes text,
 	cost DECIMAL,
 	job_ticket VARCHAR(100),
-	updated_at timestamp
+	updated_at timestamp,
+	remaining_quantity int
 );
 
 CREATE TABLE incoming_materials (
