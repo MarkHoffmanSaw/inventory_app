@@ -217,28 +217,29 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 		emptyCost := []string{}
 
 		for removingQty > 0 {
-			var transaction_id int
+			var transactionId int
 			var cost float64
 			var remainingQty int
 
 			// Look up for any balances after deductions
 			db.QueryRow(`
 				SELECT transaction_id, cost, remaining_quantity FROM transactions_log
-				WHERE stock_id = $1 AND quantity_change < 0
+				WHERE material_id = $1 AND stock_id = $2 AND quantity_change < 0
 				ORDER BY transaction_id DESC LIMIT 1;
 						`,
-				trx.stockId).Scan(&transaction_id, &cost, &remainingQty)
+				trx.materialId,
+				trx.stockId).Scan(&transactionId, &cost, &remainingQty)
 
 			// If there are no deductions then find an material income batch
-			if transaction_id == 0 {
+			if transactionId == 0 {
 				db.QueryRow(`
 					SELECT transaction_id, cost, remaining_quantity FROM transactions_log
-					WHERE stock_id = $1 AND quantity_change > 0
-						
-					ORDER BY transaction_id LIMIT 1;
+					WHERE material_id = $1 AND stock_id = $2  AND quantity_change > 0
+					ORDER BY transaction_id DESC LIMIT 1;
 							`,
+					trx.materialId,
 					trx.stockId,
-				).Scan(&transaction_id, &cost, &remainingQty)
+				).Scan(&transactionId, &cost, &remainingQty)
 			}
 
 			// If there is no more materials on the found batch
@@ -248,12 +249,13 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 
 				db.QueryRow(`
 					SELECT transaction_id, cost, remaining_quantity FROM transactions_log
-					WHERE stock_id = $1 AND quantity_change > 0
+					WHERE material_id = $1 AND stock_id = $2 AND quantity_change > 0
 						AND cost NOT IN (`+strings.Join(emptyCost, ",")+`)
-					ORDER BY transaction_id LIMIT 1;
+					ORDER BY transaction_id DESC LIMIT 1;
 							`,
+					trx.materialId,
 					trx.stockId,
-				).Scan(&transaction_id, &cost, &remainingQty)
+				).Scan(&transactionId, &cost, &remainingQty)
 			}
 
 			// Deduct from the balance
@@ -585,88 +587,6 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 	dialog.Resize(fyne.NewSize(600, 400))
 	dialog.Show()
 }
-
-// Add a new material to a location
-/*
-func addMaterial(myWindow fyne.Window, db *sql.DB) {
-	customers, _ := fetchCustomers(db)
-	var customersStr []string
-	customersMap := make(map[string]int)
-	for _, customer := range customers {
-		customersStr = append(customersStr, customer.name)
-		customersMap[customer.name] = customer.id
-	}
-
-	var materials []Material
-	var materialsStr []string
-	materialsMap := make(map[[2]string]int)
-
-	customerSelector := widget.NewSelect(customersStr, func(customerName string) {
-		customerId := customersMap[customerName]
-		materials, _ = fetchMaterialsByCustomer(db, customerId)
-		for _, material := range materials {
-			materialsStr = append(materialsStr, material.StockID+"|"+material.LocationName)
-			materialsMap[[2]string{material.StockID, material.LocationName}] = material.MaterialID
-		}
-	})
-
-	dialogCustomer := dialog.NewCustomConfirm("Choose customer", "OK", "", customerSelector,
-		func(confirm bool) {
-			if confirm && customerSelector.Selected != "" {
-				stockIDEntrySelect := widget.NewSelectEntry(materialsStr)
-				quantityInput := widget.NewEntry()
-				notesInput := widget.NewEntry()
-
-				dialogMaterial := dialog.NewForm("Replenish Material", "Add", "Cancel",
-					[]*widget.FormItem{
-						widget.NewFormItem("Stock ID", stockIDEntrySelect),
-						widget.NewFormItem("Add quantity", quantityInput),
-						widget.NewFormItem("Notes", notesInput),
-					},
-					func(confirm bool) {
-						if confirm {
-							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
-							locationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
-							quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
-							materialId := materialsMap[[2]string{stockId, locationName}]
-							notes := notesInput.Text
-
-							_, err := db.Exec(`
-							UPDATE materials
-							SET quantity = (quantity + $1),
-								notes = $2
-							WHERE material_id = $3;
-							`, quantity, notes, materialId,
-							)
-
-							if err != nil {
-								dialog.ShowInformation("Error", "Updating material error: "+err.Error(), myWindow)
-							} else {
-								err := addTranscation(&TransactionInfo{
-									materialId: materialId,
-									stockId:    stockId,
-									quantity:   quantity,
-									notes:      notes,
-									updatedAt:  time.Now(),
-								}, db)
-
-								if err != nil {
-									dialog.ShowInformation("Error", "Updating transactions error: "+err.Error(), myWindow)
-								} else {
-									dialog.ShowInformation("Success", "Material updated", myWindow)
-								}
-							}
-						}
-					}, myWindow)
-
-				dialogMaterial.Resize(fyne.NewSize(600, 300))
-				dialogMaterial.Show()
-			}
-		}, myWindow)
-
-	dialogCustomer.Resize(fyne.NewSize(300, 100))
-	dialogCustomer.Show()
-}*/
 
 // Remove a material from a location
 func removeMaterial(myWindow fyne.Window, db *sql.DB) {
