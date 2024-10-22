@@ -2,8 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"fmt"
 	"log"
+	"os"
 	"reflect"
 	"strconv"
 	"time"
@@ -96,7 +98,6 @@ func showInventory(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 
 	dialog.Resize(fyne.NewSize(600, 200))
 	dialog.Show()
-
 }
 
 func showTransactions(app fyne.App, db *sql.DB) {
@@ -264,4 +265,49 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 	}
 
 	return transactionsTable
+}
+
+func getFinancialReport(db *sql.DB) {
+	rows, err := db.Query("SELECT * FROM transactions_log;")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rows.Close()
+
+	file, err := os.Create("../report.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	writer.Write([]string{"Transaction ID", "Material ID", "Stock ID",
+		"Quantity Change", "Notes",
+		"Unit Cost",
+		"Job Ticket", "Updated At", "Remaining Qty"})
+
+	for rows.Next() {
+		var trx Transaction
+		if err := rows.Scan(&trx.TransactionId, &trx.MaterialId, &trx.StockId,
+			&trx.Quantity, &trx.Notes, &trx.Cost, &trx.JobTicket, &trx.UpdatedAt,
+			&trx.RemainingQty); err != nil {
+			log.Fatal(err)
+		}
+
+		if err := writer.Write([]string{strconv.Itoa(trx.TransactionId), strconv.Itoa(trx.MaterialId),
+			trx.StockId, strconv.Itoa(trx.Quantity), trx.Notes, strconv.FormatFloat(trx.Cost, 'f', -1, 64),
+			trx.JobTicket, trx.UpdatedAt.Format("2006-01-03 15:04:05"),
+			strconv.Itoa(trx.RemainingQty)}); err != nil {
+			log.Fatal(err)
+		}
+
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("Data exported to the file!")
 }

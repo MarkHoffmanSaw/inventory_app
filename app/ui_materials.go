@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -214,48 +215,44 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 	if trx.quantity < 0 {
 		removingQty := int(math.Abs(float64(trx.quantity)))
 
-		emptyCost := []string{}
+		emptyCost := []string{"0"}
 
 		for removingQty > 0 {
 			var transactionId int
 			var cost float64
 			var remainingQty int
 
-			// Look up for any balances after deductions
+			// Find a last deduction
 			db.QueryRow(`
 				SELECT transaction_id, cost, remaining_quantity FROM transactions_log
 				WHERE material_id = $1 AND stock_id = $2 AND quantity_change < 0
+					AND cost NOT IN (`+strings.Join(emptyCost, ",")+`)
 				ORDER BY transaction_id DESC LIMIT 1;
 						`,
 				trx.materialId,
 				trx.stockId).Scan(&transactionId, &cost, &remainingQty)
 
-			// If there are no deductions then find an material income batch
+			// First deduction is NOT found
 			if transactionId == 0 {
 				db.QueryRow(`
 					SELECT transaction_id, cost, remaining_quantity FROM transactions_log
 					WHERE material_id = $1 AND stock_id = $2  AND quantity_change > 0
-					ORDER BY transaction_id DESC LIMIT 1;
-							`,
-					trx.materialId,
-					trx.stockId,
-				).Scan(&transactionId, &cost, &remainingQty)
-			}
-
-			// If there is no more materials on the found batch
-			// then find the next income batch (not including the old unit cost)
-			if remainingQty == 0 {
-				emptyCost = append(emptyCost, strconv.FormatFloat(cost, 'f', -1, 64))
-
-				db.QueryRow(`
-					SELECT transaction_id, cost, remaining_quantity FROM transactions_log
-					WHERE material_id = $1 AND stock_id = $2 AND quantity_change > 0
 						AND cost NOT IN (`+strings.Join(emptyCost, ",")+`)
-					ORDER BY transaction_id DESC LIMIT 1;
+					ORDER BY transaction_id LIMIT 1;
 							`,
 					trx.materialId,
 					trx.stockId,
 				).Scan(&transactionId, &cost, &remainingQty)
+
+				// When neither positive nor negative calculations found
+				if transactionId == 0 {
+					return errors.New("no remains found")
+				}
+
+				// First deduction is found, but remains are zero
+			} else if transactionId != 0 && remainingQty == 0 {
+				emptyCost = append(emptyCost, strconv.FormatFloat(cost, 'f', -1, 64))
+				continue
 			}
 
 			// Deduct from the balance
@@ -275,6 +272,7 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 					return errInsert
 				}
 
+				emptyCost = append(emptyCost, strconv.FormatFloat(cost, 'f', -1, 64))
 			} else if remainingQty >= removingQty {
 				remainingQty -= removingQty
 
@@ -650,11 +648,11 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 
 								// Update the material quantity
 								_, err := db.Exec(`
-									UPDATE materials
-									SET quantity = (quantity - $1),
-										notes = $2
-									WHERE material_id = $3;
-									`, quantity, notes, materialId,
+												UPDATE materials
+												SET quantity = (quantity - $1),
+													notes = $2
+												WHERE material_id = $3;
+												`, quantity, notes, materialId,
 								)
 
 								if err != nil {

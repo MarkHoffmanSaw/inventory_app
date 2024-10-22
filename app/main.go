@@ -38,8 +38,6 @@ func main() {
 			widget.NewButton("Add a Warehouse/Location", func() { addWarehouse(myWindow, db) }),
 			widget.NewButton("Send a Material to Warehouse", func() { sendMaterial(myWindow, db) }),
 			widget.NewButton("Incoming Materials", func() { acceptIncomingMaterials(myApp, db) }),
-			// widget.NewButton("Add a Material", func() { createMaterial(myWindow, db, MaterialOpts{}) }),
-			// widget.NewButton("Replenish material", func() { addMaterial(myWindow, db) }),
 			widget.NewButton("Remove a Material", func() { removeMaterial(myWindow, db) }),
 			widget.NewButton("Move a Material", func() { moveMaterial(myWindow, db) }),
 		)
@@ -48,6 +46,7 @@ func main() {
 			widget.NewLabel("Tables"),
 			widget.NewButton("Inventory List", func() { showInventory(myApp, db, myWindow) }),
 			widget.NewButton("Transactions", func() { showTransactions(myApp, db) }),
+			widget.NewButton("Download a Report", func() { getFinancialReport(db) }),
 		)
 
 		warehouseActionsContainer := container.New(layout.NewGridLayoutWithColumns(3),
