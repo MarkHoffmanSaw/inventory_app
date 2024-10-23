@@ -15,7 +15,7 @@ import (
 func main() {
 	myApp := app.New()
 	myApp.Settings().SetTheme(theme.LightTheme())
-	myWindow := myApp.NewWindow("Tag Systems USA Inventory Management v1.0")
+	myWindow := myApp.NewWindow("Tag Systems USA Inventory Management v1.1")
 
 	// Database connection
 	db, err := connectToDB()
@@ -35,18 +35,18 @@ func main() {
 
 		materialContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Materials"),
-			widget.NewButton("Add a Warehouse/Location", func() { addWarehouse(myWindow, db) }),
-			widget.NewButton("Send a Material to Warehouse", func() { sendMaterial(myWindow, db) }),
+			widget.NewButton("Add Warehouse/Location", func() { addWarehouse(myWindow, db) }),
+			widget.NewButton("Send Material to Warehouse", func() { sendMaterial(myWindow, db) }),
 			widget.NewButton("Incoming Materials", func() { acceptIncomingMaterials(myApp, db) }),
-			widget.NewButton("Remove a Material", func() { removeMaterial(myWindow, db) }),
-			widget.NewButton("Move a Material", func() { moveMaterial(myWindow, db) }),
+			widget.NewButton("Use Material", func() { removeMaterial(myWindow, db) }),
+			widget.NewButton("Move Material to Location", func() { moveMaterial(myWindow, db) }),
 		)
 
 		infoContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Tables"),
 			widget.NewButton("Inventory List", func() { showInventory(myApp, db, myWindow) }),
 			widget.NewButton("Transactions", func() { showTransactions(myApp, db) }),
-			widget.NewButton("Download a Report", func() { getFinancialReport(db) }),
+			widget.NewButton("Download Report", func() { getFinancialReport(db) }),
 		)
 
 		warehouseActionsContainer := container.New(layout.NewGridLayoutWithColumns(3),
