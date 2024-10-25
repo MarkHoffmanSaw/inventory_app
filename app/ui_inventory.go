@@ -46,10 +46,21 @@ type Transaction struct {
 	RemainingQty  int       `field:"remaining_quantity"`
 }
 
-type InventoryFilter struct {
-	stockID    string
-	customerID int
-	locationID int
+type TransactionReport struct {
+	MaterialType string    `field:"material_type"`
+	Qty          int       `field:"quantity_change"`
+	UnitCost     float64   `field:"unit_cost"`
+	Cost         float64   `field:"cost"`
+	UpdatedAt    time.Time `field:"updated_at"`
+}
+
+type SearchFilter struct {
+	stockID      string
+	customerID   int
+	locationID   int
+	materialType string
+	dateFrom     string
+	dateTo       string
 }
 
 func showInventory(app fyne.App, db *sql.DB, myWindow fyne.Window) {
@@ -83,7 +94,7 @@ func showInventory(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 			widget.NewFormItem("Location", locationSelector),
 		}, func(confirm bool) {
 			if confirm {
-				invFilter := &InventoryFilter{
+				invFilter := &SearchFilter{
 					stockID:    stockIDInput.Text,
 					customerID: customersMap[customerSelector.Selected],
 					locationID: locationsMap[locationSelector.Selected],
@@ -100,15 +111,7 @@ func showInventory(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 	dialog.Show()
 }
 
-func showTransactions(app fyne.App, db *sql.DB) {
-	window := app.NewWindow("Transactions")
-	transactionsTable := getTransactionsTable(db)
-	window.SetContent(transactionsTable)
-	window.Resize(fyne.NewSize(1700, 700))
-	window.Show()
-}
-
-func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
+func getMaterialsTable(db *sql.DB, filterOpts *SearchFilter) fyne.Widget {
 	rows, err := db.Query(`SELECT m.material_id, m.stock_id, l.name, m.description,
 							m.notes, m.quantity, m.min_required_quantity, m.max_required_quantity,
 							m.updated_at, c.name, m.material_type,
@@ -133,8 +136,8 @@ func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 	invList := [][]string{
 		{
 			"Material ID", "Stock ID", "Location", "Material Type",
-			"Description", "Notes", "Quantity", "Min Required Qty",
-			"Max Required Qty", "Updated At", "Customer", "Is Active",
+			"Description", "Notes", "Quantity", "Min Qty",
+			"Max Qty", "Updated At", "Customer", "Is Active",
 		},
 	}
 
@@ -181,42 +184,94 @@ func getMaterialsTable(db *sql.DB, filterOpts *InventoryFilter) fyne.Widget {
 			o.(*widget.Label).SetText(invList[i.Row][i.Col])
 		})
 
-	columnWidth := 150
 	for col := 0; col < len(invList[0]); col++ {
-		materialsTable.SetColumnWidth(col, float32(columnWidth))
+		materialsTable.SetColumnWidth(col, float32(150))
 	}
 
 	return materialsTable
 }
 
-func getTransactionsTable(db *sql.DB) fyne.Widget {
-	rows, err := db.Query(`SELECT transaction_id, m.material_id as material_id,
-							m.stock_id as stock_id, tl.quantity_change,
-							tl.notes, tl.cost, tl.updated_at, tl.job_ticket,
-							l.name as location_name, w.name as warehouse_name,
-							c.name as customer_name, tl.remaining_quantity
+func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
+	window := app.NewWindow("Transactions")
+
+	customers, _ := fetchCustomers(db)
+	var customersStr []string
+	customersMap := make(map[string]int)
+	for _, customer := range customers {
+		customersStr = append(customersStr, customer.name)
+		customersMap[customer.name] = customer.id
+	}
+
+	customerSelector := widget.NewSelect(customersStr, func(s string) {})
+	typeSelector := widget.NewSelect([]string{"Carrier", "Card", "Envelope", "Insert", "Consumables"}, func(s string) {})
+	dateFromEntry := widget.NewEntry()
+	dateFromEntry.SetText(time.Now().Format("2006-01-03"))
+	dateToEntry := widget.NewEntry()
+	dateToEntry.SetText(time.Now().Format("2006-01-03"))
+
+	// Filter Inventory List by options
+	dialog := dialog.NewForm("Filter Options", "Filter", "",
+		[]*widget.FormItem{
+			widget.NewFormItem("Customer", customerSelector),
+			widget.NewFormItem("Material Type", typeSelector),
+			widget.NewFormItem("Date From", dateFromEntry),
+			widget.NewFormItem("Date To", dateToEntry),
+		}, func(confirm bool) {
+			if confirm {
+				if typeSelector.Selected == "" &&
+					customerSelector.Selected == "" {
+					dialog.ShowConfirm("Error", "Customer must be selected. Go back?", func(confirm bool) {
+						if confirm {
+							showTransactions(app, db, myWindow)
+						}
+					}, myWindow)
+				} else {
+					SearchFilter := &SearchFilter{
+						customerID:   customersMap[customerSelector.Selected],
+						materialType: typeSelector.Selected,
+						dateFrom:     dateFromEntry.Text + " 00:00:00.000000",
+						dateTo:       dateToEntry.Text + " 23:59:59.999999",
+					}
+
+					materialsTable := getTransactionsTable(db, SearchFilter)
+					window.SetContent(materialsTable)
+					window.Resize(fyne.NewSize(1600, 700))
+					window.Show()
+				}
+			}
+		}, myWindow)
+
+	dialog.Resize(fyne.NewSize(600, 200))
+	dialog.Show()
+}
+
+func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
+	rows, err := db.Query(`SELECT m.material_type, tl.quantity_change,
+								  tl.cost as "unit_cost",
+								  (tl.quantity_change * tl.cost) as "cost",
+								  tl.updated_at
 							FROM transactions_log tl
 							LEFT JOIN materials m ON m.material_id = tl.material_id
-							LEFT JOIN locations l ON m.location_id = l.location_id
-							LEFT JOIN warehouses w ON l.warehouse_id = w.warehouse_id
 							LEFT JOIN customers c ON m.customer_id = c.customer_id
-							ORDER BY transaction_id ASC;`)
+							WHERE 
+								m.customer_id = $1 AND
+								($2 = '' OR m.material_type::TEXT = $2) AND
+								tl.updated_at::TEXT >= $3 AND
+								tl.updated_at::TEXT <= $4
+							ORDER BY transaction_id;`,
+		trxFilter.customerID, trxFilter.materialType, trxFilter.dateFrom, trxFilter.dateTo)
 	if err != nil {
 		fmt.Printf("Error getTransactionsTable1: %e", err)
 	}
 
 	trxList := [][]string{
 		{
-			"Transaction ID", "Stock ID",
-			"Quantity Change", "Notes",
-			"Unit Cost", "Updated At",
-			"Job Ticket", "Location",
-			"Warehouse", "Customer", "Remaining Qty",
+			"Material Type", "Quantity", "Unit Price", "Price", "Date",
 		},
 	}
 
 	for rows.Next() {
-		trx := Transaction{}
+		trx := TransactionReport{}
 
 		s := reflect.ValueOf(&trx).Elem()
 		numCols := s.NumField()
@@ -225,7 +280,6 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 		for i := 0; i < numCols; i++ {
 			field := s.Field(i)
 			columns[i] = field.Addr().Interface()
-
 		}
 
 		err := rows.Scan(columns...)
@@ -234,17 +288,10 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 		}
 
 		trxList = append(trxList, []string{
-			strconv.Itoa(trx.TransactionId),
-			trx.StockId,
-			strconv.Itoa(trx.Quantity),
-			trx.Notes,
+			trx.MaterialType, strconv.Itoa(trx.Qty),
+			strconv.FormatFloat(trx.UnitCost, 'f', -1, 64),
 			strconv.FormatFloat(trx.Cost, 'f', -1, 64),
 			trx.UpdatedAt.Format("2006-01-03 15:04:05"),
-			trx.JobTicket,
-			trx.LocationName,
-			trx.WarehouseName,
-			trx.CustomerName,
-			strconv.Itoa(trx.RemainingQty),
 		})
 	}
 
@@ -259,15 +306,14 @@ func getTransactionsTable(db *sql.DB) fyne.Widget {
 			o.(*widget.Label).SetText(trxList[i.Row][i.Col])
 		})
 
-	columnWidth := 150
 	for col := 0; col < len(trxList[0]); col++ {
-		transactionsTable.SetColumnWidth(col, float32(columnWidth))
+		transactionsTable.SetColumnWidth(col, float32(150))
 	}
 
 	return transactionsTable
 }
 
-func getFinancialReport(db *sql.DB) {
+func downloadFinancialReport(db *sql.DB) {
 	rows, err := db.Query("SELECT * FROM transactions_log;")
 	if err != nil {
 		log.Fatal(err)

@@ -45,8 +45,8 @@ func main() {
 		infoContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Tables"),
 			widget.NewButton("Inventory List", func() { showInventory(myApp, db, myWindow) }),
-			widget.NewButton("Transactions", func() { showTransactions(myApp, db) }),
-			widget.NewButton("Download Report", func() { getFinancialReport(db) }),
+			widget.NewButton("Transactions", func() { showTransactions(myApp, db, myWindow) }),
+			widget.NewButton("Download Report", func() { downloadFinancialReport(db) }),
 		)
 
 		warehouseActionsContainer := container.New(layout.NewGridLayoutWithColumns(3),
