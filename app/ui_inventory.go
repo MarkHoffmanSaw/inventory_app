@@ -48,10 +48,11 @@ type Transaction struct {
 
 type TransactionReport struct {
 	MaterialType string    `field:"material_type"`
-	Qty          int       `field:"quantity_change"`
+	Qty          int       `field:"quantity"`
 	UnitCost     float64   `field:"unit_cost"`
 	Cost         float64   `field:"cost"`
 	UpdatedAt    time.Time `field:"updated_at"`
+	TotalValue   float64   `field:"total_value"`
 }
 
 type SearchFilter struct {
@@ -61,6 +62,7 @@ type SearchFilter struct {
 	materialType string
 	dateFrom     string
 	dateTo       string
+	dateAsOf     string
 }
 
 func showInventory(app fyne.App, db *sql.DB, myWindow fyne.Window) {
@@ -192,8 +194,6 @@ func getMaterialsTable(db *sql.DB, filterOpts *SearchFilter) fyne.Widget {
 }
 
 func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
-	window := app.NewWindow("Transactions")
-
 	customers, _ := fetchCustomers(db)
 	var customersStr []string
 	customersMap := make(map[string]int)
@@ -234,8 +234,9 @@ func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 					}
 
 					materialsTable := getTransactionsTable(db, SearchFilter)
+					window := app.NewWindow("Transactions by Types")
 					window.SetContent(materialsTable)
-					window.Resize(fyne.NewSize(1600, 700))
+					window.Resize(fyne.NewSize(1000, 500))
 					window.Show()
 				}
 			}
@@ -246,7 +247,7 @@ func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 }
 
 func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
-	rows, err := db.Query(`SELECT m.material_type, tl.quantity_change,
+	rows, err := db.Query(`SELECT m.material_type, tl.quantity_change as "quantity",
 								  tl.cost as "unit_cost",
 								  (tl.quantity_change * tl.cost) as "cost",
 								  tl.updated_at
@@ -266,23 +267,21 @@ func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 
 	trxList := [][]string{
 		{
-			"Material Type", "Quantity", "Unit Price", "Price", "Date",
+			"Material Type", "Quantity", "Unit Price, USD", "Price, USD", "Accepted Date",
 		},
 	}
 
 	for rows.Next() {
 		trx := TransactionReport{}
 
-		s := reflect.ValueOf(&trx).Elem()
-		numCols := s.NumField()
+		err := rows.Scan(
+			&trx.MaterialType,
+			&trx.Qty,
+			&trx.UnitCost,
+			&trx.Cost,
+			&trx.UpdatedAt,
+		)
 
-		columns := make([]interface{}, numCols)
-		for i := 0; i < numCols; i++ {
-			field := s.Field(i)
-			columns[i] = field.Addr().Interface()
-		}
-
-		err := rows.Scan(columns...)
 		if err != nil {
 			log.Printf("Error getTransactionsTable2: %e", err)
 		}
@@ -300,7 +299,111 @@ func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 			return len(trxList), len(trxList[0])
 		},
 		func() fyne.CanvasObject {
-			return widget.NewLabel("Transactions")
+			return widget.NewLabel("Transactions by Types")
+		},
+		func(i widget.TableCellID, o fyne.CanvasObject) {
+			o.(*widget.Label).SetText(trxList[i.Row][i.Col])
+		})
+
+	for col := 0; col < len(trxList[0]); col++ {
+		transactionsTable.SetColumnWidth(col, float32(150))
+	}
+
+	return transactionsTable
+}
+
+func showBalance(app fyne.App, db *sql.DB, myWindow fyne.Window) {
+	customers, _ := fetchCustomers(db)
+	var customersStr []string
+	customersMap := make(map[string]int)
+	for _, customer := range customers {
+		customersStr = append(customersStr, customer.name)
+		customersMap[customer.name] = customer.id
+	}
+
+	customerSelector := widget.NewSelect(customersStr, func(s string) {})
+	typeSelector := widget.NewSelect([]string{"Carrier", "Card", "Envelope", "Insert", "Consumables"}, func(s string) {})
+	dateAsOf := widget.NewEntry()
+	dateAsOf.SetText(time.Now().Format("2006-01-03"))
+
+	// Filter Inventory List by options
+	dialog := dialog.NewForm("Filter Options", "Filter", "",
+		[]*widget.FormItem{
+			widget.NewFormItem("Customer", customerSelector),
+			widget.NewFormItem("Material Type", typeSelector),
+			widget.NewFormItem("Date As of", dateAsOf),
+		}, func(confirm bool) {
+			if confirm {
+				if typeSelector.Selected == "" &&
+					customerSelector.Selected == "" {
+					dialog.ShowConfirm("Error", "Customer must be selected. Go back?", func(confirm bool) {
+						if confirm {
+							showBalance(app, db, myWindow)
+						}
+					}, myWindow)
+				} else {
+					SearchFilter := &SearchFilter{
+						customerID:   customersMap[customerSelector.Selected],
+						materialType: typeSelector.Selected,
+						dateAsOf:     dateAsOf.Text,
+					}
+
+					materialsTable := getBalanceTable(db, SearchFilter)
+					window := app.NewWindow("Transactions Balance by Types as of " + SearchFilter.dateAsOf)
+					window.SetContent(materialsTable)
+					window.Resize(fyne.NewSize(500, 200))
+					window.Show()
+				}
+			}
+		}, myWindow)
+
+	dialog.Resize(fyne.NewSize(600, 200))
+	dialog.Show()
+}
+
+func getBalanceTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
+	rows, err := db.Query(`
+			SELECT m.material_type,
+			SUM(tl.quantity_change) AS "quantity",
+			SUM(tl.quantity_change * tl.cost) AS "total_value" FROM transactions_log tl
+			LEFT JOIN materials m ON m.material_id = tl.material_id
+			WHERE m.customer_id = $1 AND
+			($2 = '' OR m.material_type::TEXT = $2) AND
+			tl.updated_at::TEXT <= $3
+			GROUP BY m.material_type
+	`,
+		trxFilter.customerID, trxFilter.materialType, trxFilter.dateAsOf,
+	)
+	if err != nil {
+		fmt.Printf("Error getBalanceTable1: %e", err)
+	}
+
+	trxList := [][]string{
+		{
+			"Material Type", "Quantity", "Total Value, USD",
+		},
+	}
+
+	for rows.Next() {
+		trx := TransactionReport{}
+
+		err := rows.Scan(&trx.MaterialType, &trx.Qty, &trx.TotalValue)
+
+		if err != nil {
+			log.Printf("Error getBalanceTable2: %e", err)
+		}
+
+		trxList = append(trxList, []string{
+			trx.MaterialType, strconv.Itoa(trx.Qty), strconv.Itoa(int(trx.TotalValue)),
+		})
+	}
+
+	transactionsTable := widget.NewTable(
+		func() (int, int) {
+			return len(trxList), len(trxList[0])
+		},
+		func() fyne.CanvasObject {
+			return widget.NewLabel("Transactions Balance by Types as of " + trxFilter.dateAsOf)
 		},
 		func(i widget.TableCellID, o fyne.CanvasObject) {
 			o.(*widget.Label).SetText(trxList[i.Row][i.Col])
