@@ -36,18 +36,18 @@ func main() {
 		materialContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Materials"),
 			widget.NewButton("Add Warehouse/Location", func() { addWarehouse(myWindow, db) }),
-			widget.NewButton("Send Material to Warehouse", func() { sendMaterial(myWindow, db) }),
-			widget.NewButton("Incoming Materials", func() { acceptIncomingMaterials(myApp, db) }),
-			widget.NewButton("Use Material", func() { removeMaterial(myWindow, db) }),
-			widget.NewButton("Move Material to Location", func() { moveMaterial(myWindow, db) }),
+			widget.NewButton("[CSR] Send Material to Warehouse", func() { sendMaterial(myWindow, db) }),
+			widget.NewButton("[Pete] Incoming Materials", func() { acceptIncomingMaterials(myApp, db) }),
+			widget.NewButton("[Pete] Use Material", func() { removeMaterial(myWindow, db) }),
+			widget.NewButton("[Pete] Move Material to Location", func() { moveMaterial(myWindow, db) }),
 		)
 
 		infoContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Tables"),
-			widget.NewButton("Inventory List", func() { showInventory(myApp, db, myWindow) }),
-			widget.NewButton("Get Transactions Report", func() { showTransactions(myApp, db, myWindow) }),
-			widget.NewButton("Get Transactions Balance", func() { showBalance(myApp, db, myWindow) }),
-			widget.NewButton("Download Report", func() { downloadFinancialReport(db) }),
+			widget.NewButton("[Pete] Inventory List", func() { showInventory(myApp, db, myWindow) }),
+			widget.NewButton("[John] Get Transactions Report", func() { showTransactions(myApp, db, myWindow) }),
+			widget.NewButton("[John] Get Transactions Balance", func() { showBalance(myApp, db, myWindow) }),
+			widget.NewButton("[John] Download Report (beta)", func() { downloadFinancialReport(db, myWindow) }),
 		)
 
 		warehouseActionsContainer := container.New(layout.NewGridLayoutWithColumns(3),
