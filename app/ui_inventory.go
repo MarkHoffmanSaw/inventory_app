@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -159,6 +160,11 @@ func getMaterialsTable(db *sql.DB, filterOpts *SearchFilter) fyne.Widget {
 			log.Printf("Error getMaterialsTable2: %e", err)
 		}
 
+		year, month, day := inv.UpdatedAt.Date()
+		strDate := strconv.Itoa(int(month)) + "/" +
+			strconv.Itoa(day) + "/" +
+			strconv.Itoa(year)
+
 		invList = append(invList, []string{
 			strconv.Itoa(inv.MaterialID),
 			inv.StockID,
@@ -169,7 +175,7 @@ func getMaterialsTable(db *sql.DB, filterOpts *SearchFilter) fyne.Widget {
 			strconv.Itoa(inv.Quantity),
 			strconv.Itoa(inv.MinRequiredQty),
 			strconv.Itoa(inv.MaxRequiredQty),
-			inv.UpdatedAt.Format("2006-01-03 15:04:05"),
+			strDate,
 			inv.CustomerName,
 			inv.IsActive,
 		})
@@ -205,17 +211,25 @@ func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 	customerSelector := widget.NewSelect(customersStr, func(s string) {})
 	typeSelector := widget.NewSelect([]string{"Carrier", "Card", "Envelope", "Insert", "Consumables"}, func(s string) {})
 	dateFromEntry := widget.NewEntry()
-	dateFromEntry.SetText(time.Now().Format("2006-01-03"))
+	dateFromEntry.SetText(
+		strconv.Itoa(int(time.Now().Month())) + "/" +
+			"1" + "/" +
+			strconv.Itoa(time.Now().Year()),
+	)
 	dateToEntry := widget.NewEntry()
-	dateToEntry.SetText(time.Now().Format("2006-01-03"))
+	dateToEntry.SetText(
+		strconv.Itoa(int(time.Now().Month())) + "/" +
+			strconv.Itoa(time.Now().Day()) + "/" +
+			strconv.Itoa(time.Now().Year()),
+	)
 
 	// Filter Inventory List by options
 	dialog := dialog.NewForm("Filter Options", "Filter", "",
 		[]*widget.FormItem{
 			widget.NewFormItem("Customer", customerSelector),
 			widget.NewFormItem("Material Type", typeSelector),
-			widget.NewFormItem("Date From", dateFromEntry),
-			widget.NewFormItem("Date To", dateToEntry),
+			widget.NewFormItem("Date From (MM/DD/YYYY)", dateFromEntry),
+			widget.NewFormItem("Date To (MM/DD/YYYY)", dateToEntry),
 		}, func(confirm bool) {
 			if confirm {
 				if typeSelector.Selected == "" &&
@@ -226,17 +240,27 @@ func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 						}
 					}, myWindow)
 				} else {
+					parsedDateFrom := strings.Split(dateFromEntry.Text, "/")
+					monthFrom := parsedDateFrom[0]
+					dayFrom := parsedDateFrom[1]
+					yearFrom := parsedDateFrom[2]
+
+					parsedDateTo := strings.Split(dateToEntry.Text, "/")
+					monthTo := parsedDateTo[0]
+					dayTo := parsedDateTo[1]
+					yearTo := parsedDateTo[2]
+
 					SearchFilter := &SearchFilter{
 						customerID:   customersMap[customerSelector.Selected],
 						materialType: typeSelector.Selected,
-						dateFrom:     dateFromEntry.Text + " 00:00:00.000000",
-						dateTo:       dateToEntry.Text + " 23:59:59.999999",
+						dateFrom:     yearFrom + "-" + monthFrom + "-" + dayFrom + " 00:00:00.000000",
+						dateTo:       yearTo + "-" + monthTo + "-" + dayTo + " 23:59:59.999999",
 					}
 
 					materialsTable := getTransactionsTable(db, SearchFilter)
 					window := app.NewWindow("Transactions by Types")
 					window.SetContent(materialsTable)
-					window.Resize(fyne.NewSize(1000, 500))
+					window.Resize(fyne.NewSize(800, 500))
 					window.Show()
 				}
 			}
@@ -267,7 +291,7 @@ func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 
 	trxList := [][]string{
 		{
-			"Material Type", "Quantity", "Unit Price, USD", "Price, USD", "Accepted Date",
+			"Material Type", "Quantity (+/-)", "Unit Price, USD", "Price, USD", "Accepted Date",
 		},
 	}
 
@@ -286,11 +310,16 @@ func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 			log.Printf("Error getTransactionsTable2: %e", err)
 		}
 
+		year, month, day := trx.UpdatedAt.Date()
+		strDate := strconv.Itoa(int(month)) + "/" +
+			strconv.Itoa(day) + "/" +
+			strconv.Itoa(year)
+
 		trxList = append(trxList, []string{
 			trx.MaterialType, strconv.Itoa(trx.Qty),
 			strconv.FormatFloat(trx.UnitCost, 'f', -1, 64),
 			strconv.FormatFloat(trx.Cost, 'f', -1, 64),
-			trx.UpdatedAt.Format("2006-01-03 15:04:05"),
+			strDate,
 		})
 	}
 
@@ -324,14 +353,18 @@ func showBalance(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 	customerSelector := widget.NewSelect(customersStr, func(s string) {})
 	typeSelector := widget.NewSelect([]string{"Carrier", "Card", "Envelope", "Insert", "Consumables"}, func(s string) {})
 	dateAsOf := widget.NewEntry()
-	dateAsOf.SetText(time.Now().Format("2006-01-03"))
+	dateAsOf.SetText(
+		strconv.Itoa(int(time.Now().Month())) + "/" +
+			strconv.Itoa(time.Now().Day()) + "/" +
+			strconv.Itoa(time.Now().Year()),
+	)
 
 	// Filter Inventory List by options
 	dialog := dialog.NewForm("Filter Options", "Filter", "",
 		[]*widget.FormItem{
 			widget.NewFormItem("Customer", customerSelector),
 			widget.NewFormItem("Material Type", typeSelector),
-			widget.NewFormItem("Date As of", dateAsOf),
+			widget.NewFormItem("Date As of (MM/DD/YYYY)", dateAsOf),
 		}, func(confirm bool) {
 			if confirm {
 				if typeSelector.Selected == "" &&
@@ -342,14 +375,19 @@ func showBalance(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 						}
 					}, myWindow)
 				} else {
+					parsedDate := strings.Split(dateAsOf.Text, "/")
+					month := parsedDate[0]
+					day := parsedDate[1]
+					year := parsedDate[2]
+
 					SearchFilter := &SearchFilter{
 						customerID:   customersMap[customerSelector.Selected],
 						materialType: typeSelector.Selected,
-						dateAsOf:     dateAsOf.Text,
+						dateAsOf:     year + "-" + month + "-" + day + " 23:59:59.999999",
 					}
 
 					materialsTable := getBalanceTable(db, SearchFilter)
-					window := app.NewWindow("Transactions Balance by Types as of " + SearchFilter.dateAsOf)
+					window := app.NewWindow("Transactions Balance by Types as of " + " " + SearchFilter.dateAsOf)
 					window.SetContent(materialsTable)
 					window.Resize(fyne.NewSize(500, 200))
 					window.Show()
@@ -357,7 +395,7 @@ func showBalance(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 			}
 		}, myWindow)
 
-	dialog.Resize(fyne.NewSize(600, 200))
+	dialog.Resize(fyne.NewSize(500, 200))
 	dialog.Show()
 }
 
@@ -416,7 +454,7 @@ func getBalanceTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 	return transactionsTable
 }
 
-func downloadFinancialReport(db *sql.DB) {
+func downloadFinancialReport(db *sql.DB, myWindow fyne.Window) {
 	rows, err := db.Query("SELECT * FROM transactions_log;")
 	if err != nil {
 		log.Fatal(err)
@@ -445,10 +483,22 @@ func downloadFinancialReport(db *sql.DB) {
 			log.Fatal(err)
 		}
 
-		if err := writer.Write([]string{strconv.Itoa(trx.TransactionId), strconv.Itoa(trx.MaterialId),
-			trx.StockId, strconv.Itoa(trx.Quantity), trx.Notes, strconv.FormatFloat(trx.Cost, 'f', -1, 64),
-			trx.JobTicket, trx.UpdatedAt.Format("2006-01-03 15:04:05"),
-			strconv.Itoa(trx.RemainingQty)}); err != nil {
+		year, month, day := trx.UpdatedAt.Date()
+		strDate := strconv.Itoa(int(month)) + "/" +
+			strconv.Itoa(day) + "/" +
+			strconv.Itoa(year)
+
+		if err := writer.Write([]string{
+			strconv.Itoa(trx.TransactionId),
+			strconv.Itoa(trx.MaterialId),
+			trx.StockId,
+			strconv.Itoa(trx.Quantity),
+			trx.Notes,
+			strconv.FormatFloat(trx.Cost, 'f', -1, 64),
+			trx.JobTicket,
+			strDate,
+			strconv.Itoa(trx.RemainingQty),
+		}); err != nil {
 			log.Fatal(err)
 		}
 
@@ -458,5 +508,6 @@ func downloadFinancialReport(db *sql.DB) {
 		log.Fatal(err)
 	}
 
-	log.Println("Data exported to the file!")
+	dialog := dialog.NewInformation("Success", "File has been downloaded", myWindow)
+	dialog.Show()
 }
