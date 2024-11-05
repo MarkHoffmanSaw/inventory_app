@@ -27,10 +27,9 @@ type Location struct {
 }
 
 type Customer struct {
-	id           int    `field:"customer_id"`
-	name         string `field:"name"`
-	customerType string `field:"customer_type"`
-	code         string `field:"customer_code"`
+	id   int    `field:"customer_id"`
+	name string `field:"name"`
+	code string `field:"customer_code"`
 }
 
 type MaterialInfo struct {
@@ -47,6 +46,7 @@ type MaterialInfo struct {
 	cost         float64   `field:"cost"`
 	minQty       int       `field:"min_required_quantity"`
 	maxQty       int       `field:"max_required_quantity"`
+	owner        string    `field:"onwer"`
 }
 
 type IncomingMaterial struct {
@@ -60,6 +60,7 @@ type IncomingMaterial struct {
 	Notes        string  `field:"notes"`
 	IsActive     bool    `field:"is_active"`
 	MaterialType string  `field:"type"`
+	Owner        string  `field:"owner"`
 }
 
 type TransactionInfo struct {
@@ -83,6 +84,7 @@ type MaterialOpts struct {
 	materialType string
 	isActive     bool
 	notes        string
+	owner        string
 }
 
 //////////////////////////////////////////
@@ -101,7 +103,7 @@ func fetchCustomers(db *sql.DB) ([]Customer, error) {
 
 	for rows.Next() {
 		var customer Customer
-		if err := rows.Scan(&customer.id, &customer.name, &customer.customerType, &customer.code); err != nil {
+		if err := rows.Scan(&customer.id, &customer.name, &customer.code); err != nil {
 			log.Println("Error fetchCustomers2: ", err)
 			return customers, err
 		}
@@ -273,6 +275,11 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 				}
 
 				emptyCost = append(emptyCost, strconv.FormatFloat(cost, 'f', -1, 64))
+
+				// Adjust replenishment materials while MOVING only
+				/*
+					if {}
+				*/
 			} else if remainingQty >= removingQty {
 				remainingQty -= removingQty
 
@@ -288,6 +295,11 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 					log.Println("err2", errInsert)
 					return errInsert
 				}
+
+				// Adjust replenishment materials while MOVING only
+				/*
+					if {}
+				*/
 
 				removingQty = 0
 			}
@@ -343,8 +355,9 @@ func sendMaterial(myWindow fyne.Window, db *sql.DB) {
 	costInput := widget.NewEntry()
 	minRequiredQtyInput := widget.NewEntry()
 	maxRequiredQtyInput := widget.NewEntry()
-	notesInput := widget.NewEntry()
-	isActiveChkBox := widget.NewCheck("Active", func(b bool) {})
+	descrInput := widget.NewEntry()
+	ownerChkBox := widget.NewCheck("", func(b bool) {})
+	isActiveChkBox := widget.NewCheck("", func(b bool) {})
 
 	dialog := dialog.NewForm("Accept a Material", "Send", "Cancel",
 		[]*widget.FormItem{
@@ -355,21 +368,29 @@ func sendMaterial(myWindow fyne.Window, db *sql.DB) {
 			widget.NewFormItem("Unit Cost, USD", costInput),
 			widget.NewFormItem("Min Required Quantity", minRequiredQtyInput),
 			widget.NewFormItem("Max Required Quantity", maxRequiredQtyInput),
-			widget.NewFormItem("Notes", notesInput),
-			widget.NewFormItem("", isActiveChkBox),
+			widget.NewFormItem("Description", descrInput),
+			widget.NewFormItem("TAG ownership", ownerChkBox),
+			widget.NewFormItem("Allow for use", isActiveChkBox),
 		}, func(confirm bool) {
 			if confirm {
 				floatCost, _ := strconv.ParseFloat((strings.Replace(costInput.Text, ",", "", -1)), 32)
 				cost := math.Round(floatCost*100) / 100
 
+				owner := "Tag"
+				if !ownerChkBox.Checked {
+					owner = "Customer"
+				}
+
 				_, err := db.Query(`
 				INSERT INTO incoming_materials
 					(customer_name, stock_id, cost, quantity,
-					max_required_quantity, min_required_quantity, notes, is_active, type)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+					max_required_quantity, min_required_quantity,
+					notes, is_active, type, owner)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 					customerInputSelector.Selected, stockIDInput.Text, cost,
 					quantityInput.Text, maxRequiredQtyInput.Text, minRequiredQtyInput.Text,
-					notesInput.Text, isActiveChkBox.Checked, typeSelector.Selected,
+					descrInput.Text, isActiveChkBox.Checked, typeSelector.Selected,
+					owner,
 				)
 
 				if err != nil {
@@ -419,6 +440,7 @@ func getIncomingMaterials(db *sql.DB) []IncomingMaterial {
 			material.Notes,
 			material.IsActive,
 			material.MaterialType,
+			material.Owner,
 		})
 	}
 
@@ -453,6 +475,7 @@ func acceptIncomingMaterials(app fyne.App, db *sql.DB) {
 						materialType: material.MaterialType,
 						isActive:     material.IsActive,
 						notes:        material.Notes,
+						owner:        material.Owner,
 					}
 
 					createMaterial(app, window, db, &materialOpts)
@@ -494,6 +517,7 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 	quantityInput := widget.NewEntry()
 	notesInput := widget.NewEntry()
 	isActiveLabel := widget.NewLabel(strconv.FormatBool(materialOpts.isActive))
+	ownerLabel := widget.NewLabel(materialOpts.owner)
 
 	quantityInput.SetText(strconv.Itoa(materialOpts.quantity))
 
@@ -502,7 +526,8 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 			widget.NewFormItem("Customer", customerLabel),
 			widget.NewFormItem("Stock ID", stockIDLabel),
 			widget.NewFormItem("Type", typeLabel),
-			widget.NewFormItem("Is Active", isActiveLabel),
+			widget.NewFormItem("Ownership", ownerLabel),
+			widget.NewFormItem("Allow for use", isActiveLabel),
 			widget.NewFormItem("Description", descrLabel),
 			widget.NewFormItem("Quantity", quantityInput),
 			widget.NewFormItem("Location", locationSelector),
@@ -538,11 +563,12 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 						err := db.QueryRow(`
 					INSERT INTO materials
 						(stock_id, location_id, customer_id, material_type, description, notes, quantity, updated_at,
-						min_required_quantity, max_required_quantity, is_active, cost)
+						min_required_quantity, max_required_quantity, is_active, cost, owner)
 					VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING material_id;`,
 							materialOpts.stockID, locationsMap[locationSelector.Selected], customersMap[materialOpts.customerName],
 							materialOpts.materialType, materialOpts.notes, notesInput.Text, quantity, time.Now(),
 							materialOpts.minQty, materialOpts.maxQty, materialOpts.isActive, materialOpts.cost,
+							materialOpts.owner,
 						).Scan(&material.MaterialID)
 
 						if err != nil {
@@ -604,9 +630,12 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 		customerId := customersMap[customerName]
 		materials, _ = fetchMaterialsByCustomer(db, customerId)
 		for _, material := range materials {
-			materialsStr = append(materialsStr, material.StockID+"|"+material.LocationName)
+			description := material.Notes
+			if description == "" {
+				description = "No description"
+			}
+			materialsStr = append(materialsStr, material.LocationName+"|"+material.StockID+"|"+description)
 			materialsMap[[2]string{material.StockID, material.LocationName}] = material.MaterialID
-
 		}
 	})
 
@@ -627,10 +656,9 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 					},
 					func(confirm bool) {
 						if confirm {
-
 							quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
-							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
-							locationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
+							locationName := strings.Split(stockIDEntrySelect.Text, "|")[0]
+							stockId := strings.Split(stockIDEntrySelect.Text, "|")[1]
 							materialId := materialsMap[[2]string{stockId, locationName}]
 							jobTicket := jobTicketInput.Text
 							notes := notesInput.Text
@@ -713,7 +741,11 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 		customerId := customersMap[customerName]
 		materials, _ = fetchMaterialsByCustomer(db, customerId)
 		for _, material := range materials {
-			materialsStr = append(materialsStr, material.StockID+"|"+material.LocationName)
+			description := material.Notes
+			if description == "" {
+				description = "No description"
+			}
+			materialsStr = append(materialsStr, material.LocationName+"|"+material.StockID+"|"+description)
 			materialsMap[[2]string{material.StockID, material.LocationName}] = material.MaterialID
 		}
 	})
@@ -735,8 +767,8 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 					},
 					func(confirm bool) {
 						if confirm {
-							stockId := strings.Split(stockIDEntrySelect.Text, "|")[0]
-							currLocationName := strings.Split(stockIDEntrySelect.Text, "|")[1]
+							currLocationName := strings.Split(stockIDEntrySelect.Text, "|")[0]
+							stockId := strings.Split(stockIDEntrySelect.Text, "|")[1]
 							currMaterialId := materialsMap[[2]string{stockId, currLocationName}]
 							currentLocationId := locationsMap[currLocationName]
 
@@ -754,9 +786,10 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 								WHERE material_id = $3 AND location_id = $4
 								RETURNING material_id, stock_id, location_id, customer_id, material_type,
 										description, notes, quantity, updated_at, is_active, cost,
-										min_required_quantity, max_required_quantity;
+										min_required_quantity, max_required_quantity, owner;
 							`, quantity, notes, currMaterialId, currentLocationId,
-							).Scan(&currMaterial.materialId,
+							).Scan(
+								&currMaterial.materialId,
 								&currMaterial.stockId,
 								&currMaterial.locationId,
 								&currMaterial.customerId,
@@ -768,7 +801,9 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 								&currMaterial.isActive,
 								&currMaterial.cost,
 								&currMaterial.minQty,
-								&currMaterial.maxQty)
+								&currMaterial.maxQty,
+								&currMaterial.owner,
+							)
 
 							if err != nil {
 								log.Println("moveMaterial upd1", err)
@@ -802,13 +837,13 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 									INSERT INTO materials
 										(stock_id, location_id,
 										customer_id, material_type, description, notes, quantity, updated_at,
-										cost, is_active, min_required_quantity, max_required_quantity)
-										VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+										cost, is_active, min_required_quantity, max_required_quantity, owner)
+										VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 										RETURNING material_id;`,
 										stockId, newLocationId,
 										currMaterial.customerId, currMaterial.materialType, currMaterial.description,
 										currMaterial.notes, quantity, time.Now(), currMaterial.cost, currMaterial.isActive,
-										currMaterial.minQty, currMaterial.maxQty).Scan(&newMaterial.materialId)
+										currMaterial.minQty, currMaterial.maxQty, currMaterial.owner).Scan(&newMaterial.materialId)
 
 									if err != nil {
 										log.Println("upd3", err)

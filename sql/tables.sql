@@ -5,8 +5,7 @@ CREATE TYPE customer_type AS ENUM ('TAG Owned', 'Customer Owned');
 CREATE TABLE customers (
 	customer_id serial PRIMARY KEY,
 	name VARCHAR(100) NOT NULL UNIQUE,
-	customer_code VARCHAR(100),
-	customer_type CUSTOMER_TYPE  NOT NULL
+	customer_code VARCHAR(100)
 );
 
 CREATE TABLE warehouses (
@@ -22,6 +21,7 @@ CREATE TABLE locations (
 );
 
 CREATE TYPE material_type AS ENUM ('Carrier','Card','Envelope','Insert', 'Consumables');
+CREATE TYPE owner AS ENUM('Tag', 'Company')
 
 CREATE TABLE materials (
 	material_id serial,
@@ -37,6 +37,7 @@ CREATE TABLE materials (
 	max_required_quantity int,
 	updated_at TIMESTAMP,
 	is_active BOOLEAN NOT NULL,
+	owner OWNER NOT NULL,
 	CONSTRAINT pk_stock_id_location_id PRIMARY KEY (stock_id, location_id)
 );
 
@@ -62,5 +63,6 @@ CREATE TABLE incoming_materials (
 	max_required_quantity int,
 	notes VARCHAR(100),
 	is_active BOOLEAN NOT NULL,
-	type VARCHAR(100) NOT NULL
+	type VARCHAR(100) NOT NULL,
+	owner OWNER NOT NULL
 );

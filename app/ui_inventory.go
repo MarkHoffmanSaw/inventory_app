@@ -14,7 +14,12 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/leekchan/accounting"
 )
+
+// STRUCTS
+/////////////////////////////////
 
 type Material struct {
 	MaterialID     int       `field:"material_id"`
@@ -48,6 +53,7 @@ type Transaction struct {
 }
 
 type TransactionReport struct {
+	StockID      string    `field:"stock_id"`
 	MaterialType string    `field:"material_type"`
 	Qty          int       `field:"quantity"`
 	UnitCost     float64   `field:"unit_cost"`
@@ -66,6 +72,12 @@ type SearchFilter struct {
 	dateAsOf     string
 }
 
+// CONSTANTS
+// ////////////////////////////////
+var accLib accounting.Accounting = accounting.Accounting{Symbol: "$", Precision: 2}
+
+// FUNCTIONS
+// //////////////////////////////
 func showInventory(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 	window := app.NewWindow("Inventory")
 
@@ -232,37 +244,29 @@ func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 			widget.NewFormItem("Date To (MM/DD/YYYY)", dateToEntry),
 		}, func(confirm bool) {
 			if confirm {
-				if typeSelector.Selected == "" &&
-					customerSelector.Selected == "" {
-					dialog.ShowConfirm("Error", "Customer must be selected. Go back?", func(confirm bool) {
-						if confirm {
-							showTransactions(app, db, myWindow)
-						}
-					}, myWindow)
-				} else {
-					parsedDateFrom := strings.Split(dateFromEntry.Text, "/")
-					monthFrom := parsedDateFrom[0]
-					dayFrom := parsedDateFrom[1]
-					yearFrom := parsedDateFrom[2]
+				parsedDateFrom := strings.Split(dateFromEntry.Text, "/")
+				monthFrom := parsedDateFrom[0]
+				dayFrom := parsedDateFrom[1]
+				yearFrom := parsedDateFrom[2]
 
-					parsedDateTo := strings.Split(dateToEntry.Text, "/")
-					monthTo := parsedDateTo[0]
-					dayTo := parsedDateTo[1]
-					yearTo := parsedDateTo[2]
+				parsedDateTo := strings.Split(dateToEntry.Text, "/")
+				monthTo := parsedDateTo[0]
+				dayTo := parsedDateTo[1]
+				yearTo := parsedDateTo[2]
 
-					SearchFilter := &SearchFilter{
-						customerID:   customersMap[customerSelector.Selected],
-						materialType: typeSelector.Selected,
-						dateFrom:     yearFrom + "-" + monthFrom + "-" + dayFrom + " 00:00:00.000000",
-						dateTo:       yearTo + "-" + monthTo + "-" + dayTo + " 23:59:59.999999",
-					}
-
-					materialsTable := getTransactionsTable(db, SearchFilter)
-					window := app.NewWindow("Transactions by Types")
-					window.SetContent(materialsTable)
-					window.Resize(fyne.NewSize(800, 500))
-					window.Show()
+				SearchFilter := &SearchFilter{
+					customerID:   customersMap[customerSelector.Selected],
+					materialType: typeSelector.Selected,
+					dateFrom:     yearFrom + "-" + monthFrom + "-" + dayFrom + " 00:00:00.000000",
+					dateTo:       yearTo + "-" + monthTo + "-" + dayTo + " 23:59:59.999999",
 				}
+
+				transactionsTable := getTransactionsTable(db, SearchFilter)
+				window := app.NewWindow("Transactions by Types")
+				window.SetContent(transactionsTable)
+				window.Resize(fyne.NewSize(1000, 700))
+				window.Show()
+
 			}
 		}, myWindow)
 
@@ -271,7 +275,7 @@ func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 }
 
 func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
-	rows, err := db.Query(`SELECT m.material_type, tl.quantity_change as "quantity",
+	rows, err := db.Query(`SELECT m.stock_id, m.material_type, tl.quantity_change as "quantity",
 								  tl.cost as "unit_cost",
 								  (tl.quantity_change * tl.cost) as "cost",
 								  tl.updated_at
@@ -279,7 +283,7 @@ func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 							LEFT JOIN materials m ON m.material_id = tl.material_id
 							LEFT JOIN customers c ON m.customer_id = c.customer_id
 							WHERE 
-								m.customer_id = $1 AND
+								($1 = 0 OR m.customer_id = $1) AND
 								($2 = '' OR m.material_type::TEXT = $2) AND
 								tl.updated_at::TEXT >= $3 AND
 								tl.updated_at::TEXT <= $4
@@ -291,7 +295,7 @@ func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 
 	trxList := [][]string{
 		{
-			"Material Type", "Quantity (+/-)", "Unit Price, USD", "Price, USD", "Accepted Date",
+			"Stock ID", "Material Type", "Quantity (+/-)", "Unit Price, USD", "Price, USD", "Accepted Date",
 		},
 	}
 
@@ -299,6 +303,7 @@ func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 		trx := TransactionReport{}
 
 		err := rows.Scan(
+			&trx.StockID,
 			&trx.MaterialType,
 			&trx.Qty,
 			&trx.UnitCost,
@@ -315,10 +320,15 @@ func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 			strconv.Itoa(day) + "/" +
 			strconv.Itoa(year)
 
+		unitCost := accLib.FormatMoney(trx.UnitCost)
+		cost := accLib.FormatMoney(trx.Cost)
+
 		trxList = append(trxList, []string{
-			trx.MaterialType, strconv.Itoa(trx.Qty),
-			strconv.FormatFloat(trx.UnitCost, 'f', -1, 64),
-			strconv.FormatFloat(trx.Cost, 'f', -1, 64),
+			trx.StockID,
+			trx.MaterialType,
+			strconv.Itoa(trx.Qty),
+			unitCost,
+			cost,
 			strDate,
 		})
 	}
@@ -367,31 +377,22 @@ func showBalance(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 			widget.NewFormItem("Date As of (MM/DD/YYYY)", dateAsOf),
 		}, func(confirm bool) {
 			if confirm {
-				if typeSelector.Selected == "" &&
-					customerSelector.Selected == "" {
-					dialog.ShowConfirm("Error", "Customer must be selected. Go back?", func(confirm bool) {
-						if confirm {
-							showBalance(app, db, myWindow)
-						}
-					}, myWindow)
-				} else {
-					parsedDate := strings.Split(dateAsOf.Text, "/")
-					month := parsedDate[0]
-					day := parsedDate[1]
-					year := parsedDate[2]
+				parsedDate := strings.Split(dateAsOf.Text, "/")
+				month := parsedDate[0]
+				day := parsedDate[1]
+				year := parsedDate[2]
 
-					SearchFilter := &SearchFilter{
-						customerID:   customersMap[customerSelector.Selected],
-						materialType: typeSelector.Selected,
-						dateAsOf:     year + "-" + month + "-" + day + " 23:59:59.999999",
-					}
-
-					materialsTable := getBalanceTable(db, SearchFilter)
-					window := app.NewWindow("Transactions Balance by Types as of " + " " + SearchFilter.dateAsOf)
-					window.SetContent(materialsTable)
-					window.Resize(fyne.NewSize(500, 200))
-					window.Show()
+				SearchFilter := &SearchFilter{
+					customerID:   customersMap[customerSelector.Selected],
+					materialType: typeSelector.Selected,
+					dateAsOf:     year + "-" + month + "-" + day + " 23:59:59.999999",
 				}
+
+				balanceTable := getBalanceTable(db, SearchFilter)
+				window := app.NewWindow("Transactions Balance by Types as of")
+				window.SetContent(balanceTable)
+				window.Resize(fyne.NewSize(650, 400))
+				window.Show()
 			}
 		}, myWindow)
 
@@ -401,14 +402,17 @@ func showBalance(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 
 func getBalanceTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 	rows, err := db.Query(`
-			SELECT m.material_type,
-			SUM(tl.quantity_change) AS "quantity",
-			SUM(tl.quantity_change * tl.cost) AS "total_value" FROM transactions_log tl
+			SELECT m.stock_id,
+				   m.material_type,
+				   SUM(tl.quantity_change) AS "quantity",
+				   SUM(tl.quantity_change * tl.cost) AS "total_value"
+			FROM transactions_log tl
 			LEFT JOIN materials m ON m.material_id = tl.material_id
-			WHERE m.customer_id = $1 AND
-			($2 = '' OR m.material_type::TEXT = $2) AND
-			tl.updated_at::TEXT <= $3
-			GROUP BY m.material_type
+			WHERE
+				($1 = 0 OR m.customer_id = $1) AND
+				($2 = '' OR m.material_type::TEXT = $2) AND
+				tl.updated_at::TEXT <= $3
+			GROUP BY m.stock_id, m.material_type
 	`,
 		trxFilter.customerID, trxFilter.materialType, trxFilter.dateAsOf,
 	)
@@ -418,21 +422,26 @@ func getBalanceTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 
 	trxList := [][]string{
 		{
-			"Material Type", "Quantity", "Total Value, USD",
+			"Stock ID", "Material Type", "Quantity", "Total Value, USD",
 		},
 	}
 
 	for rows.Next() {
 		trx := TransactionReport{}
 
-		err := rows.Scan(&trx.MaterialType, &trx.Qty, &trx.TotalValue)
+		err := rows.Scan(&trx.StockID, &trx.MaterialType, &trx.Qty, &trx.TotalValue)
 
 		if err != nil {
 			log.Printf("Error getBalanceTable2: %e", err)
 		}
 
+		totalValue := accLib.FormatMoney(trx.TotalValue)
+
 		trxList = append(trxList, []string{
-			trx.MaterialType, strconv.Itoa(trx.Qty), strconv.Itoa(int(trx.TotalValue)),
+			trx.StockID,
+			trx.MaterialType,
+			strconv.Itoa(trx.Qty),
+			totalValue,
 		})
 	}
 
@@ -441,7 +450,7 @@ func getBalanceTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
 			return len(trxList), len(trxList[0])
 		},
 		func() fyne.CanvasObject {
-			return widget.NewLabel("Transactions Balance by Types as of " + trxFilter.dateAsOf)
+			return widget.NewLabel("Transactions Balance by Types as of")
 		},
 		func(i widget.TableCellID, o fyne.CanvasObject) {
 			o.(*widget.Label).SetText(trxList[i.Row][i.Col])
