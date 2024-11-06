@@ -141,15 +141,17 @@ func fetchLocations(db *sql.DB) ([]Location, error) {
 	return locations, nil
 }
 
-func fetchLocationsByCustomer(db *sql.DB, customerId int, stockId string) ([]Location, error) {
+func fetchAvailableLocations(db *sql.DB, customerId int, stockId string) ([]Location, error) {
 	rows, err := db.Query(`
-		SELECT l.location_id, l.name, l.warehouse_id
+		SELECT l.location_id, l.name, l.warehouse_id 
 		FROM locations l
 		LEFT JOIN materials m ON m.location_id = l.location_id
-		WHERE (m.customer_id = $1 AND m.stock_id = $2) OR (m.material_id IS NULL)`,
+		WHERE
+			(m.customer_id = $1 AND m.stock_id = $2)
+			OR m.material_id IS NULL`,
 		customerId, stockId)
 	if err != nil {
-		log.Println("Error fetchLocationsByCustomer1: ", err)
+		log.Println("Error fetchAvailableLocations1: ", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -159,7 +161,7 @@ func fetchLocationsByCustomer(db *sql.DB, customerId int, stockId string) ([]Loc
 	for rows.Next() {
 		var location Location
 		if err := rows.Scan(&location.id, &location.name, &location.warehouseID); err != nil {
-			log.Println("Error fetchLocationsByCustomer2: ", err)
+			log.Println("Error fetchAvailableLocations2: ", err)
 			return locations, err
 		}
 		locations = append(locations, location)
@@ -275,11 +277,6 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 				}
 
 				emptyCost = append(emptyCost, strconv.FormatFloat(cost, 'f', -1, 64))
-
-				// Adjust replenishment materials while MOVING only
-				/*
-					if {}
-				*/
 			} else if remainingQty >= removingQty {
 				remainingQty -= removingQty
 
@@ -295,11 +292,6 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 					log.Println("err2", errInsert)
 					return errInsert
 				}
-
-				// Adjust replenishment materials while MOVING only
-				/*
-					if {}
-				*/
 
 				removingQty = 0
 			}
@@ -499,9 +491,12 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 		customersMap[customer.name] = customer.id
 	}
 
-	locations, _ := fetchLocationsByCustomer(db,
+	locations, _ := fetchAvailableLocations(
+		db,
 		customersMap[materialOpts.customerName],
-		materialOpts.stockID)
+		materialOpts.stockID,
+	)
+
 	var locationsStr []string
 	locationsMap := make(map[string]int)
 	for _, location := range locations {
@@ -516,8 +511,13 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 	descrLabel := widget.NewLabel(materialOpts.notes)
 	quantityInput := widget.NewEntry()
 	notesInput := widget.NewEntry()
-	isActiveLabel := widget.NewLabel(strconv.FormatBool(materialOpts.isActive))
 	ownerLabel := widget.NewLabel(materialOpts.owner)
+
+	isActive := "Yes"
+	if !materialOpts.isActive {
+		isActive = "No"
+	}
+	isActiveLabel := widget.NewLabel(isActive)
 
 	quantityInput.SetText(strconv.Itoa(materialOpts.quantity))
 
@@ -529,8 +529,8 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 			widget.NewFormItem("Ownership", ownerLabel),
 			widget.NewFormItem("Allow for use", isActiveLabel),
 			widget.NewFormItem("Description", descrLabel),
-			widget.NewFormItem("Quantity", quantityInput),
-			widget.NewFormItem("Location", locationSelector),
+			widget.NewFormItem("Quantity *", quantityInput),
+			widget.NewFormItem("Location *", locationSelector),
 			widget.NewFormItem("Notes", notesInput),
 		}, func(confirm bool) {
 			if confirm {
@@ -541,9 +541,14 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 				rows, err := db.Query(`
 				UPDATE materials
 				SET quantity = (quantity + $1)
-				WHERE stock_id = $2 and location_id = $3
+				WHERE stock_id = $2
+					AND location_id = $3
+					AND owner = $4
 				RETURNING material_id;
-				`, quantity, materialOpts.stockID, locationsMap[locationSelector.Selected],
+				`, quantity,
+					materialOpts.stockID,
+					locationsMap[locationSelector.Selected],
+					materialOpts.owner,
 				)
 
 				if err != nil {
@@ -562,12 +567,34 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 					if material.MaterialID == 0 {
 						err := db.QueryRow(`
 					INSERT INTO materials
-						(stock_id, location_id, customer_id, material_type, description, notes, quantity, updated_at,
-						min_required_quantity, max_required_quantity, is_active, cost, owner)
-					VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING material_id;`,
-							materialOpts.stockID, locationsMap[locationSelector.Selected], customersMap[materialOpts.customerName],
-							materialOpts.materialType, materialOpts.notes, notesInput.Text, quantity, time.Now(),
-							materialOpts.minQty, materialOpts.maxQty, materialOpts.isActive, materialOpts.cost,
+					(
+						stock_id,
+						location_id,
+						customer_id,
+						material_type,
+						description,
+						notes,
+						quantity,
+						updated_at,
+						min_required_quantity,
+						max_required_quantity,
+						is_active,
+						cost,
+						owner
+					)
+					VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING material_id;`,
+							materialOpts.stockID,
+							locationsMap[locationSelector.Selected],
+							customersMap[materialOpts.customerName],
+							materialOpts.materialType,
+							materialOpts.notes,
+							notesInput.Text,
+							quantity,
+							time.Now(),
+							materialOpts.minQty,
+							materialOpts.maxQty,
+							materialOpts.isActive,
+							materialOpts.cost,
 							materialOpts.owner,
 						).Scan(&material.MaterialID)
 

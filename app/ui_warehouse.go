@@ -55,6 +55,7 @@ func addWarehouse(myWindow fyne.Window, db *sql.DB) {
 	}
 
 	nameSelectInput := widget.NewSelectEntry(warehousesStr)
+	nameSelectInput.SetText(warehousesStr[0])
 	locNameInput := widget.NewEntry()
 
 	dialog := dialog.NewForm("Add Warehouse", "Save", "Cancel",

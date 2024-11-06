@@ -38,7 +38,7 @@ CREATE TABLE materials (
 	updated_at TIMESTAMP,
 	is_active BOOLEAN NOT NULL,
 	owner OWNER NOT NULL,
-	CONSTRAINT pk_stock_id_location_id PRIMARY KEY (stock_id, location_id)
+	CONSTRAINT pk_stock_id_location_id PRIMARY KEY (stock_id, location_id, owner)
 );
 
 CREATE TABLE transactions_log (

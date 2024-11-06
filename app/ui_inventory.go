@@ -35,6 +35,7 @@ type Material struct {
 	MaterialType   string    `field:"type"`
 	IsActive       string    `field:"is_active"`
 	Cost           float64   `field:"cost"`
+	Owner          string    `field:"owner"`
 }
 
 type Transaction struct {
@@ -52,7 +53,7 @@ type Transaction struct {
 	RemainingQty  int       `field:"remaining_quantity"`
 }
 
-type TransactionReport struct {
+type TransactionRep struct {
 	StockID      string    `field:"stock_id"`
 	MaterialType string    `field:"material_type"`
 	Qty          int       `field:"quantity"`
@@ -72,69 +73,86 @@ type SearchFilter struct {
 	dateAsOf     string
 }
 
+type Reporter interface {
+	getReportList() [][]string
+	showReport()
+}
+
+type Report struct {
+	db     *sql.DB
+	app    fyne.App
+	window fyne.Window
+}
+
+type InventoryReport struct {
+	Report
+	invFilter SearchFilter
+}
+
+type TransactionReport struct {
+	Report
+	trxFilter SearchFilter
+}
+
+type BalanceReport struct {
+	Report
+	blcFilter SearchFilter
+}
+
+///////////////////////////
 // CONSTANTS
-// ////////////////////////////////
+///////////////////////////
+
 var accLib accounting.Accounting = accounting.Accounting{Symbol: "$", Precision: 2}
 
-// FUNCTIONS
-// //////////////////////////////
-func showInventory(app fyne.App, db *sql.DB, myWindow fyne.Window) {
-	window := app.NewWindow("Inventory")
+///////////////////////////
+// ABSTRACTION METHODS
+///////////////////////////
 
-	customers, _ := fetchCustomers(db)
-	var customersStr []string
-	customersMap := make(map[string]int)
-	for _, customer := range customers {
-		customersStr = append(customersStr, customer.name)
-		customersMap[customer.name] = customer.id
+func getReportTable(list [][]string) fyne.Widget {
+	reportTable := widget.NewTable(
+		func() (int, int) {
+			return len(list), len(list[0])
+		},
+		func() fyne.CanvasObject {
+			return widget.NewLabel("Transactions")
+		},
+		func(i widget.TableCellID, o fyne.CanvasObject) {
+			o.(*widget.Label).SetText(list[i.Row][i.Col])
+		})
+
+	for col := 0; col < len(list[0]); col++ {
+		reportTable.SetColumnWidth(col, float32(150))
 	}
 
-	locations, _ := fetchLocations(db)
-	var locationsStr []string
-	locationsMap := make(map[string]int)
-	for _, location := range locations {
-		locationsStr = append(locationsStr, location.name)
-		locationsMap[location.name] = location.id
+	return reportTable
+}
+
+func downloadReport(window fyne.Window, list [][]string) {
+	file, err := os.Create("../reports/Report on" + " " + strings.Split(time.Now().Local().String(), ".")[0] + ".csv")
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer file.Close()
 
-	stockIDInput := widget.NewEntry()
-	customerSelector := widget.NewSelect(customersStr, func(s string) {})
-	locationSelector := widget.NewSelect(locationsStr, func(s string) {})
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
 
-	// Filter Inventory List by options
-	dialog := dialog.NewForm("Filter Options", "Filter", "",
-		[]*widget.FormItem{
-			widget.NewFormItem("Stock ID", stockIDInput),
-			widget.NewFormItem("Customer", customerSelector),
-			widget.NewFormItem("Location", locationSelector),
-		}, func(confirm bool) {
-			if confirm {
-				invFilter := &SearchFilter{
-					stockID:    stockIDInput.Text,
-					customerID: customersMap[customerSelector.Selected],
-					locationID: locationsMap[locationSelector.Selected],
-				}
+	writer.WriteAll(list)
 
-				materialsTable := getMaterialsTable(db, invFilter)
-				window.SetContent(materialsTable)
-				window.Resize(fyne.NewSize(1600, 700))
-				window.Show()
-			}
-		}, myWindow)
-
-	dialog.Resize(fyne.NewSize(600, 200))
+	dialog := dialog.NewInformation("Success", "File has been saved to the reports folder", window)
 	dialog.Show()
 }
 
-func getMaterialsTable(db *sql.DB, filterOpts *SearchFilter) fyne.Widget {
-	rows, err := db.Query(`SELECT m.material_id, m.stock_id, l.name, m.description,
+func (i InventoryReport) getReportList() [][]string {
+	rows, err := i.db.Query(`SELECT m.material_id, m.stock_id, l.name, m.description,
 							m.notes, m.quantity, m.min_required_quantity, m.max_required_quantity,
 							m.updated_at, c.name, m.material_type,
 								CASE
 									WHEN m.is_active THEN 'Yes'
 									ELSE 'No'
 								END AS is_active,
-							m.cost
+							m.cost, m.owner
 							FROM materials m
 							LEFT JOIN locations l ON m.location_id = l.location_id
 							LEFT JOIN customers c ON c.customer_id = m.customer_id
@@ -143,7 +161,7 @@ func getMaterialsTable(db *sql.DB, filterOpts *SearchFilter) fyne.Widget {
 								($2 = 0 OR c.customer_id = $2) AND
 								($3 = 0 OR l.location_id = $3)
 							ORDER BY m.updated_at ASC;`,
-		filterOpts.stockID, filterOpts.customerID, filterOpts.locationID)
+		i.invFilter.stockID, i.invFilter.customerID, i.invFilter.locationID)
 	if err != nil {
 		fmt.Printf("Error getMaterialsTable1: %e", err)
 	}
@@ -152,7 +170,7 @@ func getMaterialsTable(db *sql.DB, filterOpts *SearchFilter) fyne.Widget {
 		{
 			"Material ID", "Stock ID", "Location", "Material Type",
 			"Description", "Notes", "Quantity", "Min Qty",
-			"Max Qty", "Updated At", "Customer", "Is Active",
+			"Max Qty", "Updated At", "Customer", "Is Active", "Owner",
 		},
 	}
 
@@ -190,29 +208,127 @@ func getMaterialsTable(db *sql.DB, filterOpts *SearchFilter) fyne.Widget {
 			strDate,
 			inv.CustomerName,
 			inv.IsActive,
+			inv.Owner,
 		})
 	}
 
-	materialsTable := widget.NewTable(
-		func() (int, int) {
-			return len(invList), len(invList[0])
-		},
-		func() fyne.CanvasObject {
-			return widget.NewLabel("Materials")
-		},
-		func(i widget.TableCellID, o fyne.CanvasObject) {
-			o.(*widget.Label).SetText(invList[i.Row][i.Col])
-		})
-
-	for col := 0; col < len(invList[0]); col++ {
-		materialsTable.SetColumnWidth(col, float32(150))
-	}
-
-	return materialsTable
+	return invList
 }
 
-func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
-	customers, _ := fetchCustomers(db)
+func (i InventoryReport) showReport() {
+	window := i.app.NewWindow("Inventory")
+
+	customers, _ := fetchCustomers(i.db)
+	var customersStr []string
+	customersMap := make(map[string]int)
+	for _, customer := range customers {
+		customersStr = append(customersStr, customer.name)
+		customersMap[customer.name] = customer.id
+	}
+
+	locations, _ := fetchLocations(i.db)
+	var locationsStr []string
+	locationsMap := make(map[string]int)
+	for _, location := range locations {
+		locationsStr = append(locationsStr, location.name)
+		locationsMap[location.name] = location.id
+	}
+
+	stockIDInput := widget.NewEntry()
+	customerSelector := widget.NewSelect(customersStr, func(s string) {})
+	locationSelector := widget.NewSelect(locationsStr, func(s string) {})
+
+	// Filter Inventory List by options
+	dialog := dialog.NewForm("Filter Options", "Filter", "",
+		[]*widget.FormItem{
+			widget.NewFormItem("Stock ID", stockIDInput),
+			widget.NewFormItem("Customer", customerSelector),
+			widget.NewFormItem("Location", locationSelector),
+		}, func(confirm bool) {
+			if confirm {
+				i.invFilter = SearchFilter{
+					stockID:    stockIDInput.Text,
+					customerID: customersMap[customerSelector.Selected],
+					locationID: locationsMap[locationSelector.Selected],
+				}
+
+				invList := i.getReportList()
+				inventoryTable := getReportTable(invList)
+				window.SetContent(inventoryTable)
+				window.Resize(fyne.NewSize(1600, 700))
+				window.Show()
+			}
+		}, i.window)
+
+	dialog.Resize(fyne.NewSize(600, 200))
+	dialog.Show()
+
+}
+
+func (t TransactionReport) getReportList() [][]string {
+	rows, err := t.db.Query(`SELECT m.stock_id, m.material_type, tl.quantity_change as "quantity",
+	tl.cost as "unit_cost",
+	(tl.quantity_change * tl.cost) as "cost",
+	tl.updated_at
+FROM transactions_log tl
+LEFT JOIN materials m ON m.material_id = tl.material_id
+LEFT JOIN customers c ON m.customer_id = c.customer_id
+WHERE 
+  ($1 = 0 OR m.customer_id = $1) AND
+  ($2 = '' OR m.material_type::TEXT = $2) AND
+  tl.updated_at::TEXT >= $3 AND
+  tl.updated_at::TEXT <= $4
+ORDER BY transaction_id;`,
+		t.trxFilter.customerID, t.trxFilter.materialType, t.trxFilter.dateFrom, t.trxFilter.dateTo)
+	if err != nil {
+		fmt.Printf("Error getTransactionsTable1: %e", err)
+	}
+
+	trxList := [][]string{
+		{
+			"Stock ID", "Material Type", "Quantity (+/-)", "Unit Price, USD", "Price, USD", "Accepted Date",
+		},
+	}
+
+	for rows.Next() {
+		trx := TransactionRep{}
+
+		err := rows.Scan(
+			&trx.StockID,
+			&trx.MaterialType,
+			&trx.Qty,
+			&trx.UnitCost,
+			&trx.Cost,
+			&trx.UpdatedAt,
+		)
+
+		if err != nil {
+			log.Printf("Error getTransactionsTable2: %e", err)
+		}
+
+		year, month, day := trx.UpdatedAt.Date()
+		strDate := strconv.Itoa(int(month)) + "/" +
+			strconv.Itoa(day) + "/" +
+			strconv.Itoa(year)
+
+		unitCost := accLib.FormatMoney(trx.UnitCost)
+		cost := accLib.FormatMoney(trx.Cost)
+
+		trxList = append(trxList, []string{
+			trx.StockID,
+			trx.MaterialType,
+			strconv.Itoa(trx.Qty),
+			unitCost,
+			cost,
+			strDate,
+		})
+	}
+
+	return trxList
+}
+
+func (t TransactionReport) showReport() {
+	customers, _ := fetchCustomers(t.db)
 	var customersStr []string
 	customersMap := make(map[string]int)
 	for _, customer := range customers {
@@ -254,105 +370,84 @@ func showTransactions(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 				dayTo := parsedDateTo[1]
 				yearTo := parsedDateTo[2]
 
-				SearchFilter := &SearchFilter{
+				t.trxFilter = SearchFilter{
 					customerID:   customersMap[customerSelector.Selected],
 					materialType: typeSelector.Selected,
 					dateFrom:     yearFrom + "-" + monthFrom + "-" + dayFrom + " 00:00:00.000000",
 					dateTo:       yearTo + "-" + monthTo + "-" + dayTo + " 23:59:59.999999",
 				}
 
-				transactionsTable := getTransactionsTable(db, SearchFilter)
-				window := app.NewWindow("Transactions by Types")
+				window := t.app.NewWindow("Transactions")
+
+				trxList := t.getReportList()
+				transactionsTable := getReportTable(trxList)
+				fileMenu := fyne.NewMenu("File", fyne.NewMenuItem("Save as .csv", func() {
+					downloadReport(window, trxList)
+				}))
+				window.SetMainMenu(fyne.NewMainMenu(fileMenu))
+
 				window.SetContent(transactionsTable)
 				window.Resize(fyne.NewSize(1000, 700))
 				window.Show()
 
 			}
-		}, myWindow)
+		}, t.window)
 
 	dialog.Resize(fyne.NewSize(600, 200))
 	dialog.Show()
 }
 
-func getTransactionsTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
-	rows, err := db.Query(`SELECT m.stock_id, m.material_type, tl.quantity_change as "quantity",
-								  tl.cost as "unit_cost",
-								  (tl.quantity_change * tl.cost) as "cost",
-								  tl.updated_at
-							FROM transactions_log tl
-							LEFT JOIN materials m ON m.material_id = tl.material_id
-							LEFT JOIN customers c ON m.customer_id = c.customer_id
-							WHERE 
-								($1 = 0 OR m.customer_id = $1) AND
-								($2 = '' OR m.material_type::TEXT = $2) AND
-								tl.updated_at::TEXT >= $3 AND
-								tl.updated_at::TEXT <= $4
-							ORDER BY transaction_id;`,
-		trxFilter.customerID, trxFilter.materialType, trxFilter.dateFrom, trxFilter.dateTo)
+func (b BalanceReport) getReportList() [][]string {
+	rows, err := b.db.Query(`
+	SELECT m.stock_id,
+		   m.material_type,
+		   SUM(tl.quantity_change) AS "quantity",
+		   SUM(tl.quantity_change * tl.cost) AS "total_value"
+	FROM transactions_log tl
+	LEFT JOIN materials m ON m.material_id = tl.material_id
+	WHERE
+		($1 = 0 OR m.customer_id = $1) AND
+		($2 = '' OR m.material_type::TEXT = $2) AND
+		tl.updated_at::TEXT <= $3
+	GROUP BY m.stock_id, m.material_type
+`,
+		b.blcFilter.customerID, b.blcFilter.materialType, b.blcFilter.dateAsOf,
+	)
 	if err != nil {
-		fmt.Printf("Error getTransactionsTable1: %e", err)
+		fmt.Printf("Error getBalanceTable1: %e", err)
 	}
 
-	trxList := [][]string{
+	blcList := [][]string{
 		{
-			"Stock ID", "Material Type", "Quantity (+/-)", "Unit Price, USD", "Price, USD", "Accepted Date",
+			"Stock ID", "Material Type", "Quantity", "Total Value, USD",
 		},
 	}
 
 	for rows.Next() {
-		trx := TransactionReport{}
+		balance := TransactionRep{}
 
-		err := rows.Scan(
-			&trx.StockID,
-			&trx.MaterialType,
-			&trx.Qty,
-			&trx.UnitCost,
-			&trx.Cost,
-			&trx.UpdatedAt,
-		)
+		err := rows.Scan(&balance.StockID, &balance.MaterialType, &balance.Qty, &balance.TotalValue)
 
 		if err != nil {
-			log.Printf("Error getTransactionsTable2: %e", err)
+			log.Printf("Error getBalanceTable2: %e", err)
 		}
 
-		year, month, day := trx.UpdatedAt.Date()
-		strDate := strconv.Itoa(int(month)) + "/" +
-			strconv.Itoa(day) + "/" +
-			strconv.Itoa(year)
+		totalValue := accLib.FormatMoney(balance.TotalValue)
 
-		unitCost := accLib.FormatMoney(trx.UnitCost)
-		cost := accLib.FormatMoney(trx.Cost)
-
-		trxList = append(trxList, []string{
-			trx.StockID,
-			trx.MaterialType,
-			strconv.Itoa(trx.Qty),
-			unitCost,
-			cost,
-			strDate,
+		blcList = append(blcList, []string{
+			balance.StockID,
+			balance.MaterialType,
+			strconv.Itoa(balance.Qty),
+			totalValue,
 		})
 	}
 
-	transactionsTable := widget.NewTable(
-		func() (int, int) {
-			return len(trxList), len(trxList[0])
-		},
-		func() fyne.CanvasObject {
-			return widget.NewLabel("Transactions by Types")
-		},
-		func(i widget.TableCellID, o fyne.CanvasObject) {
-			o.(*widget.Label).SetText(trxList[i.Row][i.Col])
-		})
+	return blcList
 
-	for col := 0; col < len(trxList[0]); col++ {
-		transactionsTable.SetColumnWidth(col, float32(150))
-	}
-
-	return transactionsTable
 }
 
-func showBalance(app fyne.App, db *sql.DB, myWindow fyne.Window) {
-	customers, _ := fetchCustomers(db)
+func (b BalanceReport) showReport() {
+	customers, _ := fetchCustomers(b.db)
 	var customersStr []string
 	customersMap := make(map[string]int)
 	for _, customer := range customers {
@@ -382,141 +477,25 @@ func showBalance(app fyne.App, db *sql.DB, myWindow fyne.Window) {
 				day := parsedDate[1]
 				year := parsedDate[2]
 
-				SearchFilter := &SearchFilter{
+				b.blcFilter = SearchFilter{
 					customerID:   customersMap[customerSelector.Selected],
 					materialType: typeSelector.Selected,
 					dateAsOf:     year + "-" + month + "-" + day + " 23:59:59.999999",
 				}
 
-				balanceTable := getBalanceTable(db, SearchFilter)
-				window := app.NewWindow("Transactions Balance by Types as of")
+				window := b.app.NewWindow("Transactions Balance")
+				blcList := b.getReportList()
+				balanceTable := getReportTable(blcList)
+				fileMenu := fyne.NewMenu("File", fyne.NewMenuItem("Save as .csv", func() {
+					downloadReport(window, blcList)
+				}))
+				window.SetMainMenu(fyne.NewMainMenu(fileMenu))
 				window.SetContent(balanceTable)
 				window.Resize(fyne.NewSize(650, 400))
 				window.Show()
 			}
-		}, myWindow)
+		}, b.window)
 
 	dialog.Resize(fyne.NewSize(500, 200))
-	dialog.Show()
-}
-
-func getBalanceTable(db *sql.DB, trxFilter *SearchFilter) fyne.Widget {
-	rows, err := db.Query(`
-			SELECT m.stock_id,
-				   m.material_type,
-				   SUM(tl.quantity_change) AS "quantity",
-				   SUM(tl.quantity_change * tl.cost) AS "total_value"
-			FROM transactions_log tl
-			LEFT JOIN materials m ON m.material_id = tl.material_id
-			WHERE
-				($1 = 0 OR m.customer_id = $1) AND
-				($2 = '' OR m.material_type::TEXT = $2) AND
-				tl.updated_at::TEXT <= $3
-			GROUP BY m.stock_id, m.material_type
-	`,
-		trxFilter.customerID, trxFilter.materialType, trxFilter.dateAsOf,
-	)
-	if err != nil {
-		fmt.Printf("Error getBalanceTable1: %e", err)
-	}
-
-	trxList := [][]string{
-		{
-			"Stock ID", "Material Type", "Quantity", "Total Value, USD",
-		},
-	}
-
-	for rows.Next() {
-		trx := TransactionReport{}
-
-		err := rows.Scan(&trx.StockID, &trx.MaterialType, &trx.Qty, &trx.TotalValue)
-
-		if err != nil {
-			log.Printf("Error getBalanceTable2: %e", err)
-		}
-
-		totalValue := accLib.FormatMoney(trx.TotalValue)
-
-		trxList = append(trxList, []string{
-			trx.StockID,
-			trx.MaterialType,
-			strconv.Itoa(trx.Qty),
-			totalValue,
-		})
-	}
-
-	transactionsTable := widget.NewTable(
-		func() (int, int) {
-			return len(trxList), len(trxList[0])
-		},
-		func() fyne.CanvasObject {
-			return widget.NewLabel("Transactions Balance by Types as of")
-		},
-		func(i widget.TableCellID, o fyne.CanvasObject) {
-			o.(*widget.Label).SetText(trxList[i.Row][i.Col])
-		})
-
-	for col := 0; col < len(trxList[0]); col++ {
-		transactionsTable.SetColumnWidth(col, float32(150))
-	}
-
-	return transactionsTable
-}
-
-func downloadFinancialReport(db *sql.DB, myWindow fyne.Window) {
-	rows, err := db.Query("SELECT * FROM transactions_log;")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer rows.Close()
-
-	file, err := os.Create("../report.csv")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	writer.Write([]string{"Transaction ID", "Material ID", "Stock ID",
-		"Quantity Change", "Notes",
-		"Unit Cost",
-		"Job Ticket", "Updated At", "Remaining Qty"})
-
-	for rows.Next() {
-		var trx Transaction
-		if err := rows.Scan(&trx.TransactionId, &trx.MaterialId, &trx.StockId,
-			&trx.Quantity, &trx.Notes, &trx.Cost, &trx.JobTicket, &trx.UpdatedAt,
-			&trx.RemainingQty); err != nil {
-			log.Fatal(err)
-		}
-
-		year, month, day := trx.UpdatedAt.Date()
-		strDate := strconv.Itoa(int(month)) + "/" +
-			strconv.Itoa(day) + "/" +
-			strconv.Itoa(year)
-
-		if err := writer.Write([]string{
-			strconv.Itoa(trx.TransactionId),
-			strconv.Itoa(trx.MaterialId),
-			trx.StockId,
-			strconv.Itoa(trx.Quantity),
-			trx.Notes,
-			strconv.FormatFloat(trx.Cost, 'f', -1, 64),
-			trx.JobTicket,
-			strDate,
-			strconv.Itoa(trx.RemainingQty),
-		}); err != nil {
-			log.Fatal(err)
-		}
-
-	}
-
-	if err := rows.Err(); err != nil {
-		log.Fatal(err)
-	}
-
-	dialog := dialog.NewInformation("Success", "File has been downloaded", myWindow)
 	dialog.Show()
 }
