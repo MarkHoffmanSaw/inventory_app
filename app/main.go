@@ -49,9 +49,9 @@ func main() {
 
 		infoContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Tables"),
-			widget.NewButton("Inventory List", func() { inv.showReport() }),
-			widget.NewButton("Get Transactions Report", func() { trx.showReport() }),
-			widget.NewButton("Get Transactions Balance", func() { blc.showReport() }),
+			widget.NewButton("Inventory List", func() { getReport(inv) }),
+			widget.NewButton("Transactions Report", func() { getReport(trx) }),
+			widget.NewButton("Balance Report", func() { getReport(blc) }),
 		)
 
 		warehouseActionsContainer := container.New(layout.NewGridLayoutWithColumns(3),

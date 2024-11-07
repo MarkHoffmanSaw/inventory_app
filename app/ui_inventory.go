@@ -99,15 +99,11 @@ type BalanceReport struct {
 	blcFilter SearchFilter
 }
 
-///////////////////////////
-// CONSTANTS
-///////////////////////////
-
 var accLib accounting.Accounting = accounting.Accounting{Symbol: "$", Precision: 2}
 
-///////////////////////////
-// ABSTRACTION METHODS
-///////////////////////////
+func getReport(r Reporter) {
+	r.showReport()
+}
 
 func getReportTable(list [][]string) fyne.Widget {
 	reportTable := widget.NewTable(
@@ -267,18 +263,18 @@ func (i InventoryReport) showReport() {
 
 func (t TransactionReport) getReportList() [][]string {
 	rows, err := t.db.Query(`SELECT m.stock_id, m.material_type, tl.quantity_change as "quantity",
-	tl.cost as "unit_cost",
-	(tl.quantity_change * tl.cost) as "cost",
-	tl.updated_at
-FROM transactions_log tl
-LEFT JOIN materials m ON m.material_id = tl.material_id
-LEFT JOIN customers c ON m.customer_id = c.customer_id
-WHERE 
-  ($1 = 0 OR m.customer_id = $1) AND
-  ($2 = '' OR m.material_type::TEXT = $2) AND
-  tl.updated_at::TEXT >= $3 AND
-  tl.updated_at::TEXT <= $4
-ORDER BY transaction_id;`,
+								tl.cost as "unit_cost",
+								(tl.quantity_change * tl.cost) as "cost",
+								tl.updated_at
+							 FROM transactions_log tl
+							 LEFT JOIN materials m ON m.material_id = tl.material_id
+							 LEFT JOIN customers c ON m.customer_id = c.customer_id
+							 WHERE 
+								($1 = 0 OR m.customer_id = $1) AND
+								($2 = '' OR m.material_type::TEXT = $2) AND
+								tl.updated_at::TEXT >= $3 AND
+								tl.updated_at::TEXT <= $4
+							 ORDER BY transaction_id;`,
 		t.trxFilter.customerID, t.trxFilter.materialType, t.trxFilter.dateFrom, t.trxFilter.dateTo)
 	if err != nil {
 		fmt.Printf("Error getTransactionsTable1: %e", err)
