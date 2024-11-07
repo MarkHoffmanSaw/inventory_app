@@ -141,15 +141,15 @@ func fetchLocations(db *sql.DB) ([]Location, error) {
 	return locations, nil
 }
 
-func fetchAvailableLocations(db *sql.DB, customerId int, stockId string) ([]Location, error) {
+func fetchAvailableLocations(db *sql.DB, customerId int, stockId string, owner string) ([]Location, error) {
 	rows, err := db.Query(`
 		SELECT l.location_id, l.name, l.warehouse_id 
 		FROM locations l
 		LEFT JOIN materials m ON m.location_id = l.location_id
 		WHERE
-			(m.customer_id = $1 AND m.stock_id = $2)
+			(m.customer_id = $1 AND m.stock_id = $2 AND m.owner != $3)
 			OR m.material_id IS NULL`,
-		customerId, stockId)
+		customerId, stockId, owner)
 	if err != nil {
 		log.Println("Error fetchAvailableLocations1: ", err)
 		return nil, err
@@ -176,7 +176,7 @@ func fetchAvailableLocations(db *sql.DB, customerId int, stockId string) ([]Loca
 func fetchMaterialsByCustomer(db *sql.DB, customerId int) ([]Material, error) {
 	rows, err := db.Query(`SELECT m.material_id, m.stock_id, l.name, m.description,
 							m.notes, m.quantity, m.updated_at, c.name, m.material_type,
-							m.cost
+							m.cost, m.owner
 							FROM materials m
 							LEFT JOIN locations l ON m.location_id = l.location_id
 							LEFT JOIN customers c ON c.customer_id = m.customer_id
@@ -202,6 +202,7 @@ func fetchMaterialsByCustomer(db *sql.DB, customerId int) ([]Material, error) {
 			&material.CustomerName,
 			&material.MaterialType,
 			&material.Cost,
+			&material.Owner,
 		); err != nil {
 			log.Println("Error fetchMaterialsByCustomer2: ", err)
 			return materials, err
@@ -495,6 +496,7 @@ func createMaterial(app fyne.App, myWindow fyne.Window, db *sql.DB, materialOpts
 		db,
 		customersMap[materialOpts.customerName],
 		materialOpts.stockID,
+		materialOpts.owner,
 	)
 
 	var locationsStr []string
@@ -651,7 +653,7 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 
 	var materials []Material
 	var materialsStr []string
-	materialsMap := make(map[[2]string]int)
+	materialsMap := make(map[int][3]string)
 
 	customerSelector := widget.NewSelect(customersStr, func(customerName string) {
 		customerId := customersMap[customerName]
@@ -661,8 +663,15 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 			if description == "" {
 				description = "No description"
 			}
-			materialsStr = append(materialsStr, material.LocationName+"|"+material.StockID+"|"+description)
-			materialsMap[[2]string{material.StockID, material.LocationName}] = material.MaterialID
+			materialsStr = append(materialsStr,
+				material.LocationName+" | "+
+					material.StockID+" | "+
+					material.Owner)
+
+			materialsMap[material.MaterialID] = [3]string{
+				material.StockID,
+				material.LocationName,
+				material.Owner}
 		}
 	})
 
@@ -684,9 +693,18 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 					func(confirm bool) {
 						if confirm {
 							quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
-							locationName := strings.Split(stockIDEntrySelect.Text, "|")[0]
-							stockId := strings.Split(stockIDEntrySelect.Text, "|")[1]
-							materialId := materialsMap[[2]string{stockId, locationName}]
+							locationName := strings.Split(stockIDEntrySelect.Text, " | ")[0]
+							stockId := strings.Split(stockIDEntrySelect.Text, " | ")[1]
+							owner := strings.Split(stockIDEntrySelect.Text, " | ")[2]
+
+							var materialId int
+							valuesArr := [3]string{stockId, locationName, owner}
+							for k, v := range materialsMap {
+								if reflect.DeepEqual(v, valuesArr) {
+									materialId = k
+								}
+							}
+
 							jobTicket := jobTicketInput.Text
 							notes := notesInput.Text
 
@@ -762,7 +780,7 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 
 	var materials []Material
 	var materialsStr []string
-	materialsMap := make(map[[2]string]int)
+	materialsMap := make(map[int][3]string)
 
 	customerSelector := widget.NewSelect(customersStr, func(customerName string) {
 		customerId := customersMap[customerName]
@@ -772,8 +790,15 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 			if description == "" {
 				description = "No description"
 			}
-			materialsStr = append(materialsStr, material.LocationName+"|"+material.StockID+"|"+description)
-			materialsMap[[2]string{material.StockID, material.LocationName}] = material.MaterialID
+			materialsStr = append(materialsStr,
+				material.LocationName+"|"+
+					material.StockID+"|"+
+					material.Owner)
+			materialsMap[material.MaterialID] = [3]string{
+				material.StockID,
+				material.LocationName,
+				material.Owner,
+			}
 		}
 	})
 
@@ -796,9 +821,17 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 						if confirm {
 							currLocationName := strings.Split(stockIDEntrySelect.Text, "|")[0]
 							stockId := strings.Split(stockIDEntrySelect.Text, "|")[1]
-							currMaterialId := materialsMap[[2]string{stockId, currLocationName}]
-							currentLocationId := locationsMap[currLocationName]
+							owner := strings.Split(stockIDEntrySelect.Text, "|")[2]
 
+							var currMaterialId int
+							valuesArr := [3]string{stockId, currLocationName, owner}
+							for k, v := range materialsMap {
+								if reflect.DeepEqual(v, valuesArr) {
+									currMaterialId = k
+								}
+							}
+
+							currentLocationId := locationsMap[currLocationName]
 							newLocationId := locationsMap[locationSelect.Selected]
 							quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
 							notes := notesInput.Text

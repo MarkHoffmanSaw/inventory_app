@@ -336,14 +336,14 @@ func (t TransactionReport) showReport() {
 	typeSelector := widget.NewSelect([]string{"Carrier", "Card", "Envelope", "Insert", "Consumables"}, func(s string) {})
 	dateFromEntry := widget.NewEntry()
 	dateFromEntry.SetText(
-		strconv.Itoa(int(time.Now().Month())) + "/" +
-			"1" + "/" +
+		padStart(strconv.Itoa(int(time.Now().Month())), 2, '0') + "/" +
+			"01" + "/" +
 			strconv.Itoa(time.Now().Year()),
 	)
 	dateToEntry := widget.NewEntry()
 	dateToEntry.SetText(
-		strconv.Itoa(int(time.Now().Month())) + "/" +
-			strconv.Itoa(time.Now().Day()) + "/" +
+		padStart(strconv.Itoa(int(time.Now().Month())), 2, '0') + "/" +
+			padStart(strconv.Itoa(time.Now().Day()), 2, '0') + "/" +
 			strconv.Itoa(time.Now().Year()),
 	)
 
@@ -455,8 +455,8 @@ func (b BalanceReport) showReport() {
 	typeSelector := widget.NewSelect([]string{"Carrier", "Card", "Envelope", "Insert", "Consumables"}, func(s string) {})
 	dateAsOf := widget.NewEntry()
 	dateAsOf.SetText(
-		strconv.Itoa(int(time.Now().Month())) + "/" +
-			strconv.Itoa(time.Now().Day()) + "/" +
+		padStart(strconv.Itoa(int(time.Now().Month())), 2, 0) + "/" +
+			padStart(strconv.Itoa(time.Now().Day()), 2, '0') + "/" +
 			strconv.Itoa(time.Now().Year()),
 	)
 
