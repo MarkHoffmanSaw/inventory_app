@@ -124,8 +124,8 @@ func getReportTable(list [][]string) fyne.Widget {
 	return reportTable
 }
 
-func downloadReport(window fyne.Window, list [][]string) {
-	file, err := os.Create("../reports/Report on" + " " + strings.Split(time.Now().Local().String(), ".")[0] + ".csv")
+func downloadReport(window fyne.Window, list [][]string, fileName string) {
+	file, err := os.Create("../reports/ " + fileName + ".csv")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func (i InventoryReport) showReport() {
 	locationSelector := widget.NewSelect(locationsStr, func(s string) {})
 
 	// Filter Inventory List by options
-	dialog := dialog.NewForm("Filter Options", "Filter", "",
+	dialog := dialog.NewForm("Filter Options", "Show", "",
 		[]*widget.FormItem{
 			widget.NewFormItem("Stock ID", stockIDInput),
 			widget.NewFormItem("Customer", customerSelector),
@@ -348,7 +348,7 @@ func (t TransactionReport) showReport() {
 	)
 
 	// Filter Inventory List by options
-	dialog := dialog.NewForm("Filter Options", "Filter", "",
+	dialog := dialog.NewForm("Filter Options", "Show", "",
 		[]*widget.FormItem{
 			widget.NewFormItem("Customer", customerSelector),
 			widget.NewFormItem("Material Type", typeSelector),
@@ -377,11 +377,21 @@ func (t TransactionReport) showReport() {
 
 				trxList := t.getReportList()
 				transactionsTable := getReportTable(trxList)
-				fileMenu := fyne.NewMenu("File", fyne.NewMenuItem("Save as .csv", func() {
-					downloadReport(window, trxList)
-				}))
-				window.SetMainMenu(fyne.NewMainMenu(fileMenu))
 
+				fileMenu := fyne.NewMenu("File", fyne.NewMenuItem("Save as .csv", func() {
+					fileNameEntry := widget.NewEntry()
+					dialog := dialog.NewForm("Save the File", "Save", "Cancel", []*widget.FormItem{
+						widget.NewFormItem("File name", fileNameEntry),
+					}, func(confirm bool) {
+						if confirm {
+							downloadReport(window, trxList, fileNameEntry.Text)
+						}
+					}, window)
+					dialog.Resize(fyne.NewSize(400, 50))
+					dialog.Show()
+				}))
+
+				window.SetMainMenu(fyne.NewMainMenu(fileMenu))
 				window.SetContent(transactionsTable)
 				window.Resize(fyne.NewSize(1000, 700))
 				window.Show()
@@ -461,7 +471,7 @@ func (b BalanceReport) showReport() {
 	)
 
 	// Filter Inventory List by options
-	dialog := dialog.NewForm("Filter Options", "Filter", "",
+	dialog := dialog.NewForm("Filter Options", "Show", "",
 		[]*widget.FormItem{
 			widget.NewFormItem("Customer", customerSelector),
 			widget.NewFormItem("Material Type", typeSelector),
@@ -482,9 +492,20 @@ func (b BalanceReport) showReport() {
 				window := b.app.NewWindow("Transactions Balance")
 				blcList := b.getReportList()
 				balanceTable := getReportTable(blcList)
+
 				fileMenu := fyne.NewMenu("File", fyne.NewMenuItem("Save as .csv", func() {
-					downloadReport(window, blcList)
+					fileNameEntry := widget.NewEntry()
+					dialog := dialog.NewForm("Save the File", "Save", "Cancel", []*widget.FormItem{
+						widget.NewFormItem("File name", fileNameEntry),
+					}, func(confirm bool) {
+						if confirm {
+							downloadReport(window, blcList, fileNameEntry.Text)
+						}
+					}, window)
+					dialog.Resize(fyne.NewSize(400, 50))
+					dialog.Show()
 				}))
+
 				window.SetMainMenu(fyne.NewMainMenu(fileMenu))
 				window.SetContent(balanceTable)
 				window.Resize(fyne.NewSize(650, 400))

@@ -35,7 +35,7 @@ func main() {
 
 		materialContainer := container.New(layout.NewVBoxLayout(),
 			widget.NewLabel("Materials"),
-			widget.NewButton("Add Warehouse/Location", func() { addWarehouse(myWindow, db) }),
+			widget.NewButton("Add Location to Warehouse", func() { addWarehouse(myWindow, db) }),
 			widget.NewButton("Send Material to Warehouse", func() { sendMaterial(myWindow, db) }),
 			widget.NewButton("Incoming Materials", func() { acceptIncomingMaterials(myApp, db) }),
 			widget.NewButton("Use Material", func() { removeMaterial(myWindow, db) }),
@@ -54,7 +54,7 @@ func main() {
 			widget.NewButton("Balance Report", func() { getReport(blc) }),
 		)
 
-		warehouseActionsContainer := container.New(layout.NewGridLayoutWithColumns(3),
+		actionsContainer := container.New(layout.NewGridLayoutWithColumns(3),
 			customerContainer,
 			materialContainer,
 			infoContainer,
@@ -62,7 +62,7 @@ func main() {
 
 		content := container.New(layout.NewVBoxLayout(),
 			mainLabel,
-			warehouseActionsContainer,
+			actionsContainer,
 		)
 
 		myWindow.SetContent(content)

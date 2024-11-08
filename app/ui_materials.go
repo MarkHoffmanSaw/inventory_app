@@ -147,9 +147,9 @@ func fetchAvailableLocations(db *sql.DB, customerId int, stockId string, owner s
 		FROM locations l
 		LEFT JOIN materials m ON m.location_id = l.location_id
 		WHERE
-			(m.customer_id = $1 AND m.stock_id = $2 AND m.owner != $3)
+			(m.customer_id = $1 AND m.stock_id = $2)
 			OR m.material_id IS NULL`,
-		customerId, stockId, owner)
+		customerId, stockId)
 	if err != nil {
 		log.Println("Error fetchAvailableLocations1: ", err)
 		return nil, err
@@ -298,16 +298,50 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 			}
 		}
 	} else {
-		_, errInsert := db.Exec(
-			`INSERT INTO transactions_log
+
+		// Check if an ID with the same cost exists
+		var transactionId int
+
+		db.QueryRow(`
+				SELECT transaction_id FROM transactions_log
+				WHERE
+					material_id = $1 AND
+					stock_id = $2 AND
+					quantity_change > 0 AND
+					cost = $3
+				ORDER BY transaction_id DESC LIMIT 1;
+						`,
+			trx.materialId, trx.stockId, trx.cost).Scan(&transactionId)
+
+		log.Println("transaction ID", transactionId)
+
+		// If the ID exists then update it
+		if transactionId > 0 {
+			_, errUpd := db.Query(`
+				UPDATE transactions_log
+				SET quantity_change = quantity_change + $2,
+					remaining_quantity = remaining_quantity + $2,
+					updated_at = NOW()
+				WHERE transaction_id = $1
+
+		`, transactionId, trx.quantity)
+
+			if errUpd != nil {
+				return errUpd
+			}
+		} else {
+			// If an ID doesn't exist then add a new one
+			_, errInsert := db.Exec(
+				`INSERT INTO transactions_log
 			(material_id, stock_id, quantity_change, notes,
 			cost, job_ticket, updated_at, remaining_quantity)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			 `, trx.materialId, trx.stockId, trx.quantity, trx.notes,
-			trx.cost, trx.jobTicket, trx.updatedAt, trx.quantity)
+				trx.cost, trx.jobTicket, trx.updatedAt, trx.quantity)
 
-		if errInsert != nil {
-			return errInsert
+			if errInsert != nil {
+				return errInsert
+			}
 		}
 	}
 
@@ -315,15 +349,13 @@ func addTranscation(trx *TransactionInfo, db *sql.DB) error {
 }
 
 func deleteIncomingMaterial(db *sql.DB, shippingId int) error {
-	_, err := db.Exec(`
-		DELETE FROM incoming_materials WHERE shipping_id = $1;
-	`, shippingId)
-
-	if err != nil {
+	if _, err := db.Exec(`
+			DELETE FROM incoming_materials WHERE shipping_id = $1;`,
+		shippingId); err != nil {
 		return err
-	} else {
-		return nil
 	}
+
+	return nil
 }
 
 ///////////////////////////////////////////////////////////
@@ -678,14 +710,14 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 	dialogCustomer := dialog.NewCustomConfirm("Choose customer", "OK", "", customerSelector,
 		func(confirm bool) {
 			if confirm && customerSelector.Selected != "" {
-				stockIDEntrySelect := widget.NewSelectEntry(materialsStr)
+				stockIDSelect := widget.NewSelect(materialsStr, func(s string) {})
 				quantityInput := widget.NewEntry()
 				notesInput := widget.NewEntry()
 				jobTicketInput := widget.NewEntry()
 
 				dialogMaterial := dialog.NewForm("Remove material", "Remove", "Cancel",
 					[]*widget.FormItem{
-						widget.NewFormItem("Stock ID", stockIDEntrySelect),
+						widget.NewFormItem("Stock ID", stockIDSelect),
 						widget.NewFormItem("Remove Quantity", quantityInput),
 						widget.NewFormItem("Notes", notesInput),
 						widget.NewFormItem("Job Ticket #", jobTicketInput),
@@ -693,9 +725,9 @@ func removeMaterial(myWindow fyne.Window, db *sql.DB) {
 					func(confirm bool) {
 						if confirm {
 							quantity, _ := strconv.Atoi(strings.Replace(quantityInput.Text, ",", "", -1))
-							locationName := strings.Split(stockIDEntrySelect.Text, " | ")[0]
-							stockId := strings.Split(stockIDEntrySelect.Text, " | ")[1]
-							owner := strings.Split(stockIDEntrySelect.Text, " | ")[2]
+							locationName := strings.Split(stockIDSelect.Selected, " | ")[0]
+							stockId := strings.Split(stockIDSelect.Selected, " | ")[1]
+							owner := strings.Split(stockIDSelect.Selected, " | ")[2]
 
 							var materialId int
 							valuesArr := [3]string{stockId, locationName, owner}
@@ -791,8 +823,8 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 				description = "No description"
 			}
 			materialsStr = append(materialsStr,
-				material.LocationName+"|"+
-					material.StockID+"|"+
+				material.LocationName+" | "+
+					material.StockID+" | "+
 					material.Owner)
 			materialsMap[material.MaterialID] = [3]string{
 				material.StockID,
@@ -805,23 +837,23 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 	dialogCustomer := dialog.NewCustomConfirm("Choose customer", "OK", "Cancel", customerSelector,
 		func(confirm bool) {
 			if confirm && customerSelector.Selected != "" {
-				stockIDEntrySelect := widget.NewSelectEntry(materialsStr)
+				stockIDSelect := widget.NewSelect(materialsStr, func(s string) {})
 				locationSelect := widget.NewSelect(locationsStr, func(s string) {})
 				quantityInput := widget.NewEntry()
 				notesInput := widget.NewEntry()
 
 				dialogMaterial := dialog.NewForm("Move material to another location", "Move", "Cancel",
 					[]*widget.FormItem{
-						widget.NewFormItem("Stock ID", stockIDEntrySelect),
+						widget.NewFormItem("Stock ID", stockIDSelect),
 						widget.NewFormItem("New Location", locationSelect),
 						widget.NewFormItem("Move Quantity", quantityInput),
 						widget.NewFormItem("Notes", notesInput),
 					},
 					func(confirm bool) {
 						if confirm {
-							currLocationName := strings.Split(stockIDEntrySelect.Text, "|")[0]
-							stockId := strings.Split(stockIDEntrySelect.Text, "|")[1]
-							owner := strings.Split(stockIDEntrySelect.Text, "|")[2]
+							currLocationName := strings.Split(stockIDSelect.Selected, " | ")[0]
+							stockId := strings.Split(stockIDSelect.Selected, " | ")[1]
+							owner := strings.Split(stockIDSelect.Selected, " | ")[2]
 
 							var currMaterialId int
 							valuesArr := [3]string{stockId, currLocationName, owner}
@@ -874,9 +906,12 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 								rows, err := db.Query(`
 								UPDATE materials
 								SET quantity = (quantity + $1)
-								WHERE stock_id = $2 and location_id = $3
+								WHERE
+									stock_id = $2 AND
+									location_id = $3 AND
+									owner = $4
 								RETURNING material_id;
-							`, quantity, stockId, newLocationId,
+							`, quantity, stockId, newLocationId, owner,
 								)
 
 								if err != nil {
@@ -931,7 +966,7 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 								}, db)
 
 								dialog.ShowInformation("Success", strconv.Itoa(quantity)+" of "+
-									stockId+" has been moved from "+strings.Split(stockIDEntrySelect.Text, "|")[1]+
+									stockId+" has been moved from "+strings.Split(stockIDSelect.Selected, " | ")[1]+
 									" to "+locationSelect.Selected, myWindow)
 							}
 						}
