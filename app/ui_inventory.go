@@ -101,6 +101,31 @@ type BalanceReport struct {
 
 var accLib accounting.Accounting = accounting.Accounting{Symbol: "$", Precision: 2}
 
+func fetchLocations(db *sql.DB) ([]Location, error) {
+	rows, err := db.Query("SELECT * FROM locations;")
+	if err != nil {
+		log.Println("Error fetchLocations1: ", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var locations []Location
+
+	for rows.Next() {
+		var location Location
+		if err := rows.Scan(&location.id, &location.name, &location.warehouseID); err != nil {
+			log.Println("Error fetchLocations2: ", err)
+			return locations, err
+		}
+		locations = append(locations, location)
+	}
+	if err = rows.Err(); err != nil {
+		return locations, err
+	}
+
+	return locations, nil
+}
+
 func getReport(r Reporter) {
 	r.showReport()
 }
