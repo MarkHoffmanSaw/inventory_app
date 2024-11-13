@@ -13,6 +13,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/validation"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
@@ -97,6 +98,13 @@ type LocationOpts struct {
 //////////////////////////////////////////
 // FETCH DATA FROM THE DB
 //////////////////////////////////////////
+
+func getIncomingMaterialsNumber(db *sql.DB) int {
+	var incomingMaterialsQty int
+	row := db.QueryRow("SELECT count(shipping_id) FROM incoming_materials;")
+	row.Scan(&incomingMaterialsQty)
+	return incomingMaterialsQty
+}
 
 func fetchCustomers(db *sql.DB) ([]Customer, error) {
 	rows, err := db.Query("SELECT * FROM customers;")
@@ -377,10 +385,20 @@ func sendMaterial(myWindow fyne.Window, db *sql.DB) {
 	}
 
 	customerInputSelector := widget.NewSelect(customersStr, func(s string) {})
+	customerInputSelector.SetSelected(customersStr[0])
+
 	stockIDInput := widget.NewEntry()
+	stockIDInput.Validator = validation.NewRegexp(".+", "At least one character")
+
 	typeSelector := widget.NewSelect(materialTypes, func(s string) {})
+	typeSelector.SetSelected(materialTypes[0])
+
 	quantityInput := widget.NewEntry()
+	quantityInput.Validator = validation.NewRegexp(`[1-9]\d*$`, "Positive integers only")
+
 	costInput := widget.NewEntry()
+	costInput.Validator = validation.NewRegexp(`^[1-9]\d*(\.\d+)?$`, "Positive integers and decimals only")
+
 	minRequiredQtyInput := widget.NewEntry()
 	maxRequiredQtyInput := widget.NewEntry()
 	descrInput := widget.NewEntry()
@@ -905,35 +923,9 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 											`The moving quantity (`+strconv.Itoa(quantity)+`) is more than the actual one (`+strconv.Itoa(actualQuantity)+`)`,
 											myWindow)
 									} else {
-										var err error
 
-										// Delete the material if it's over
-										if actualQuantity == quantity {
-											err = db.QueryRow(`
-												DELETE FROM materials
-												WHERE material_id = $1
-												RETURNING material_id, stock_id, location_id, customer_id, material_type,
-														description, notes, quantity, updated_at, is_active, cost,
-														min_required_quantity, max_required_quantity, owner;
-											`, currMaterialId).Scan(
-												&currMaterial.materialId,
-												&currMaterial.stockId,
-												&currMaterial.locationId,
-												&currMaterial.customerId,
-												&currMaterial.materialType,
-												&currMaterial.description,
-												&currMaterial.notes,
-												&currMaterial.quantity,
-												&currMaterial.updatedAt,
-												&currMaterial.isActive,
-												&currMaterial.cost,
-												&currMaterial.minQty,
-												&currMaterial.maxQty,
-												&currMaterial.owner,
-											)
-										} else {
-											// Update material in the current location
-											err = db.QueryRow(`
+										// Update material in the current location
+										err := db.QueryRow(`
 												UPDATE materials
 												SET quantity = (quantity - $1),
 													notes = $2
@@ -942,23 +934,22 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 														description, notes, quantity, updated_at, is_active, cost,
 														min_required_quantity, max_required_quantity, owner;
 													`, quantity, notes, currMaterialId, currentLocationId,
-											).Scan(
-												&currMaterial.materialId,
-												&currMaterial.stockId,
-												&currMaterial.locationId,
-												&currMaterial.customerId,
-												&currMaterial.materialType,
-												&currMaterial.description,
-												&currMaterial.notes,
-												&currMaterial.quantity,
-												&currMaterial.updatedAt,
-												&currMaterial.isActive,
-												&currMaterial.cost,
-												&currMaterial.minQty,
-												&currMaterial.maxQty,
-												&currMaterial.owner,
-											)
-										}
+										).Scan(
+											&currMaterial.materialId,
+											&currMaterial.stockId,
+											&currMaterial.locationId,
+											&currMaterial.customerId,
+											&currMaterial.materialType,
+											&currMaterial.description,
+											&currMaterial.notes,
+											&currMaterial.quantity,
+											&currMaterial.updatedAt,
+											&currMaterial.isActive,
+											&currMaterial.cost,
+											&currMaterial.minQty,
+											&currMaterial.maxQty,
+											&currMaterial.owner,
+										)
 
 										if err != nil {
 											log.Println("moveMaterial upd1", err)
@@ -1023,7 +1014,7 @@ func moveMaterial(myWindow fyne.Window, db *sql.DB) {
 											}, db)
 
 											dialog.ShowInformation("Success", strconv.Itoa(quantity)+" of "+
-												stockId+" has been moved from "+strings.Split(stockIDSelector.Selected, " | ")[1]+
+												stockId+" has been moved from "+currLocationName+
 												" to "+locationSelector.Selected, myWindow)
 										}
 									}

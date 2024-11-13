@@ -287,7 +287,7 @@ func (i InventoryReport) showReport() {
 }
 
 func (t TransactionReport) getReportList() [][]string {
-	rows, err := t.db.Query(`SELECT m.stock_id, m.material_type, tl.quantity_change as "quantity",
+	rows, err := t.db.Query(`SELECT tl.stock_id, m.material_type, tl.quantity_change as "quantity",
 								tl.cost as "unit_cost",
 								(tl.quantity_change * tl.cost) as "cost",
 								tl.updated_at
