@@ -1,7 +1,5 @@
 CREATE DATABASE tag_db;
 
-CREATE TYPE customer_type AS ENUM ('TAG Owned', 'Customer Owned');
-
 CREATE TABLE customers (
 	customer_id serial PRIMARY KEY,
 	name VARCHAR(100) NOT NULL UNIQUE,
@@ -21,7 +19,7 @@ CREATE TABLE locations (
 );
 
 CREATE TYPE material_type AS ENUM ('Carrier','Card','Envelope','Insert', 'Consumables');
-CREATE TYPE owner AS ENUM('Tag', 'Company')
+CREATE TYPE owner AS ENUM('Tag', 'Customer')
 
 CREATE TABLE materials (
 	material_id serial,

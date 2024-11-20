@@ -39,6 +39,7 @@ func main() {
 			customerLabel,
 			widget.NewButton("Add Customer", func() { addCustomer(myWindow, db) }),
 			widget.NewButton("Send Material", func() { sendMaterial(myWindow, db) }),
+			widget.NewButton("Import Materials", func() { importToDB(db) }),
 		)
 
 		// Incoming materials data
@@ -55,7 +56,6 @@ func main() {
 
 		materialContainer := container.New(layout.NewCustomPaddedVBoxLayout(10),
 			warehouseLabel,
-			widget.NewButton("Add Location", func() { addWarehouse(myWindow, db) }),
 			widget.NewSeparator(),
 			incomingMaterialsLabel,
 			widget.NewButton("Refresh Data", func() {
@@ -63,6 +63,7 @@ func main() {
 				incomingMaterialsData.Set((str + strconv.Itoa(incomingMaterialsQty)))
 			}),
 			widget.NewSeparator(),
+			widget.NewButton("Add Location", func() { addWarehouse(myWindow, db) }),
 			widget.NewButton("Accept Materials", func() { acceptIncomingMaterials(myApp, db) }),
 			widget.NewButton("Use Material", func() { removeMaterial(myWindow, db) }),
 			widget.NewButton("Move Material to Location", func() { moveMaterial(myWindow, db) }),

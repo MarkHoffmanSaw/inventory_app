@@ -12,17 +12,17 @@ import (
 
 func addCustomer(myWindow fyne.Window, db *sql.DB) {
 	nameInput := widget.NewEntry()
-	nameInput.Validator = validation.NewRegexp(`^\d*[a-zA-Z][a-zA-Z0-9]*$`, "Enter a name")
+	nameInput.Validator = validation.NewRegexp(".+", "At least one character")
 	codeInput := widget.NewEntry()
-	codeInput.Validator = validation.NewRegexp(`^\d*[a-zA-Z][a-zA-Z0-9]*$`, "Enter a code")
+	codeInput.Validator = validation.NewRegexp(".+", "At least one character")
 
 	dialog := dialog.NewForm("Add Customer", "Save", "Cancel",
 		[]*widget.FormItem{
-			widget.NewFormItem("Name", nameInput),
-			widget.NewFormItem("Code", codeInput),
+			widget.NewFormItem("Name *", nameInput),
+			widget.NewFormItem("Code *", codeInput),
 		}, func(confirm bool) {
 			if confirm {
-				if _, err := db.Exec("INSERT INTO customers (name, customer_code) VALUES ($1,$2,$3)",
+				if _, err := db.Exec("INSERT INTO customers (name, customer_code) VALUES ($1,$2)",
 					nameInput.Text, codeInput.Text); err != nil {
 					log.Println("Error adding customer:", err)
 					dialog.ShowInformation("Error", err.Error(), myWindow)

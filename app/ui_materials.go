@@ -137,7 +137,6 @@ func fetchAvailableLocations(db *sql.DB, locOpts *LocationOpts) ([]Location, err
 		FROM locations l
 		LEFT JOIN materials m ON m.location_id = l.location_id
 		WHERE
-			
 			(m.customer_id = $1 AND m.stock_id = $2)
 			OR m.material_id IS NULL`,
 		locOpts.customerId, locOpts.stockId)
@@ -394,10 +393,16 @@ func sendMaterial(myWindow fyne.Window, db *sql.DB) {
 	typeSelector.SetSelected(materialTypes[0])
 
 	quantityInput := widget.NewEntry()
-	quantityInput.Validator = validation.NewRegexp(`[1-9]\d*$`, "Positive integers only")
+	quantityInput.Validator = validation.NewRegexp(
+		`^[1-9][0-9]*$`,
+		"Positive numbers greater than 0 only",
+	)
 
 	costInput := widget.NewEntry()
-	costInput.Validator = validation.NewRegexp(`^[1-9]\d*(\.\d+)?$`, "Positive integers and decimals only")
+	costInput.Validator = validation.NewRegexp(
+		`^(0*[1-9][0-9]*(\.[0-9]+)?|0+\.[0-9]*[1-9][0-9]*)$`,
+		"Positive numbers greater than 0 only",
+	)
 
 	minRequiredQtyInput := widget.NewEntry()
 	maxRequiredQtyInput := widget.NewEntry()
@@ -405,15 +410,15 @@ func sendMaterial(myWindow fyne.Window, db *sql.DB) {
 	ownerChkBox := widget.NewCheck("", func(b bool) {})
 	isActiveChkBox := widget.NewCheck("", func(b bool) {})
 
-	dialog := dialog.NewForm("Accept a Material", "Send", "Cancel",
+	dialog := dialog.NewForm("Sending a Material to the Warehouse", "Send", "Cancel",
 		[]*widget.FormItem{
 			widget.NewFormItem("Customer *", customerInputSelector),
 			widget.NewFormItem("Stock ID *", stockIDInput),
 			widget.NewFormItem("Type *", typeSelector),
 			widget.NewFormItem("Quantity *", quantityInput),
 			widget.NewFormItem("Unit Cost, USD *", costInput),
-			widget.NewFormItem("Min Required Quantity", minRequiredQtyInput),
-			widget.NewFormItem("Max Required Quantity", maxRequiredQtyInput),
+			widget.NewFormItem("Min Quantity", minRequiredQtyInput),
+			widget.NewFormItem("Max Quantity", maxRequiredQtyInput),
 			widget.NewFormItem("Description", descrInput),
 			widget.NewFormItem("TAG ownership", ownerChkBox),
 			widget.NewFormItem("Allow for use", isActiveChkBox),
