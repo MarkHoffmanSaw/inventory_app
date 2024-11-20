@@ -27,54 +27,91 @@ func importToDB(db *sql.DB) {
 		DELETE FROM materials;
 		DELETE FROM locations;
 		DELETE FROM customers;
+		DELETE FROM warehouses;
 	`)
-
-	var warehouseId int
-	db.QueryRow(`
-			INSERT INTO warehouses(name) VALUES($1) RETURNING warehouse_id`,
-		"Tag").
-		Scan(&warehouseId)
 
 	for id, record := range records {
 		customerName := record[0]
 		customerCode := record[1]
-		locationName := record[2]
-		stockID := record[3]
-		materialType := record[4]
-		description := record[5]
-		notes := record[6]
-		qty, _ := strconv.Atoi(record[7])
-		minQty, _ := strconv.Atoi(record[8])
-		maxQty, _ := strconv.Atoi(record[9])
-		isActive, _ := strconv.ParseBool(record[10])
-		owner := record[11]
-		unitCost, _ := strconv.ParseFloat(record[12], 64)
+		warehouseName := record[2]
+		locationName := record[3]
+		stockID := record[4]
+		materialType := record[5]
+		description := record[6]
+		notes := record[7]
+		qty, _ := strconv.Atoi(record[8])
+		minQty, _ := strconv.Atoi(record[9])
+		maxQty, _ := strconv.Atoi(record[10])
+		isActive, _ := strconv.ParseBool(record[11])
+		owner := record[12]
+		unitCost, _ := strconv.ParseFloat(record[13], 64)
 
+		// Check for a customer
 		var customerId int
-		db.QueryRow(`
-			INSERT INTO customers(name,customer_code) VALUES($1,$2) RETURNING customer_id`,
+		db.QueryRow(`SELECT customer_id FROM customers
+						WHERE name = $1
+						AND customer_code = $2`,
 			customerName, customerCode).
 			Scan(&customerId)
 
+		if customerId == 0 {
+			db.QueryRow(`
+			INSERT INTO customers(name,customer_code) VALUES($1,$2) RETURNING customer_id`,
+				customerName, customerCode).
+				Scan(&customerId)
+		}
+
+		log.Println("customerId", customerId)
+
+		// Check for a warehouse
+		var warehouseId int
+		db.QueryRow(`SELECT warehouse_id FROM warehouses
+						WHERE name = $1
+						`,
+			warehouseName).
+			Scan(&warehouseId)
+
+		if warehouseId == 0 {
+			db.QueryRow(`
+					INSERT INTO warehouses(name) VALUES($1) RETURNING warehouse_id`,
+				warehouseName).
+				Scan(&warehouseId)
+		}
+
+		log.Println("warehouseId", warehouseId)
+
+		// Check for a location
 		var locationId int
-		db.QueryRow(`
-			INSERT INTO locations(name,warehouse_id) VALUES($1,$2) RETURNING location_id`,
+		db.QueryRow(`SELECT location_id FROM locations
+						WHERE location_name = $1
+						AND warehouse_id = $2
+						`,
 			locationName, warehouseId).
 			Scan(&locationId)
+
+		if locationId == 0 {
+			db.QueryRow(`
+			INSERT INTO locations(name,warehouse_id) VALUES($1,$2) RETURNING location_id`,
+				locationName, warehouseId).
+				Scan(&locationId)
+		}
+
+		log.Println("locationId", locationId)
 
 		var materialId int
 		db.QueryRow(`
 			INSERT INTO materials(
-								stock_id,location_id,customer_id,material_type,
-								description,notes,quantity,min_required_quantity,
-								max_required_quantity,updated_at,is_active,cost,owner
-								  )
+					stock_id,location_id,customer_id,material_type,
+					description,notes,quantity,min_required_quantity,
+					max_required_quantity,updated_at,is_active,cost,owner)
 			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),$10,$11,$12)
 			RETURNING material_id`,
-			stockID, locationId, customerId, materialType, description, notes, qty, minQty, maxQty, isActive, unitCost, owner).
+			stockID, locationId, customerId, materialType,
+			description, notes, qty, minQty, maxQty, isActive,
+			unitCost, owner).
 			Scan(&materialId)
 
-		_, err := db.Query(`
+		db.Query(`
 			INSERT INTO transactions_log(
 									 material_id,stock_id,quantity_change,
 									 notes,cost,job_ticket,updated_at,remaining_quantity
@@ -82,8 +119,9 @@ func importToDB(db *sql.DB) {
 			VALUES($1,$2,$3,$4,$5,$6,NOW(),$7)`,
 			materialId, stockID, qty, notes, unitCost, "job_ticket", qty,
 		)
-		log.Println(err)
 
-		log.Println("job done", id)
+		log.Println("materialId", materialId)
+
+		log.Println("=========================== job done", id)
 	}
 }
