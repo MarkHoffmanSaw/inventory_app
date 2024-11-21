@@ -30,7 +30,7 @@ func importToDB(db *sql.DB) {
 		DELETE FROM warehouses;
 	`)
 
-	for id, record := range records {
+	for _, record := range records {
 		customerName := record[0]
 		customerCode := record[1]
 		warehouseName := record[2]
@@ -61,8 +61,6 @@ func importToDB(db *sql.DB) {
 				Scan(&customerId)
 		}
 
-		log.Println("customerId", customerId)
-
 		// Check for a warehouse
 		var warehouseId int
 		db.QueryRow(`SELECT warehouse_id FROM warehouses
@@ -77,8 +75,6 @@ func importToDB(db *sql.DB) {
 				warehouseName).
 				Scan(&warehouseId)
 		}
-
-		log.Println("warehouseId", warehouseId)
 
 		// Check for a location
 		var locationId int
@@ -95,8 +91,6 @@ func importToDB(db *sql.DB) {
 				locationName, warehouseId).
 				Scan(&locationId)
 		}
-
-		log.Println("locationId", locationId)
 
 		var materialId int
 		db.QueryRow(`
@@ -120,8 +114,6 @@ func importToDB(db *sql.DB) {
 			materialId, stockID, qty, notes, unitCost, "job_ticket", qty,
 		)
 
-		log.Println("materialId", materialId)
-
-		log.Println("=========================== job done", id)
+		log.Println("job done for material id", materialId)
 	}
 }
